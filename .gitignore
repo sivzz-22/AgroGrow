@@ -1,0 +1,39 @@
+# Virtual Environment
+venv/
+.venv/
+ENV/
+env/
+
+# Python Cache
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Deep Learning Weights & ML Models
+AgroGrow/weights/
+weights/
+*.pth
+*.pkl
+*.h5
+
+# Raw & Processed Datasets
+AgroGrow/dataset/
+dataset/
+DataSet/
+
+# Logs and Results
+AgroGrow/results/
+results/
+*.log
+
+# User Reports
+AgroGrow/reports/*.pdf
+reports/*.pdf
+
+# IDE / OS settings
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
