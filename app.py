@@ -107,9 +107,35 @@ humidity_input = st.sidebar.slider("Humidity (%)", min_value=30.0, max_value=98.
 storage_type = st.sidebar.selectbox("Storage Type", global_config.storage_types)
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("### 🌾 Grain Variety")
+corn_variety_input = st.sidebar.selectbox(
+    "Corn Variety Mode",
+    options=[
+        "🔍 Auto-Detect Variety",
+        "🌾 Indian / Flint / Multi-colored Corn (Ruby / Bronze / Purple)",
+        "🌽 Commercial Dent Corn (Yellow/White)"
+    ],
+    index=0,
+    help="For multicolored or ruby-red flint corn, ensures natural grain pigmentation is graded as healthy, not defect."
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🎨 Display Theme")
+overlay_style = st.sidebar.radio(
+    "Overlay Background",
+    options=["🌑 Black Background (Cob Only — Zero Bleed)", "🖼️ Semi-Transparent Photo Blend"],
+    index=0,
+    help="Black Background completely blacks out outdoor foliage, husks, and mud for a clean, zero-bleed presentation."
+)
+use_black_bg = ("Black" in overlay_style)
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("### 📂 Model Configurations")
-device_detected = "GPU (CUDA)" if torch.cuda.is_available() else "CPU Fallback"
-st.sidebar.info(f"**Inference Device:** {device_detected}")
+has_cuda = torch.cuda.is_available()
+device_options = ["Auto (GPU if available)", "CPU (Safe Mode)"] if has_cuda else ["CPU (Safe Mode)"]
+device_choice = st.sidebar.selectbox("Inference Hardware", device_options, index=0)
+use_device = "cpu" if "CPU" in device_choice else None
+st.sidebar.info(f"**Active Mode:** {'GPU Accelerated' if (has_cuda and use_device != 'cpu') else 'CPU Safe Mode'}")
 
 # Check model weights
 weights_file = global_config.weights_dir / "best_model.pth"
@@ -127,26 +153,114 @@ st.markdown("---")
 uploaded_file = st.file_uploader("Upload Raw Corn Image (.jpg)", type=["jpg", "jpeg"])
 
 if uploaded_file is not None:
-    # Save file to a temporary directory
+    # Save to temp file
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-    tfile.write(uploaded_file.read())
+    tfile.write(uploaded_file.getvalue())
     tfile.close()
-    
     img_path = Path(tfile.name)
-    
+
+    # Load image + run auto-crop immediately on upload
+    from AgroGrow.prediction.predictor import auto_crop_corn_ear
+    _raw_bgr = cv2.imread(str(img_path))
+    _raw_rgb = cv2.cvtColor(_raw_bgr, cv2.COLOR_BGR2RGB)
+    _H, _W   = _raw_rgb.shape[:2]
+    _auto_cropped, _auto_bbox = auto_crop_corn_ear(_raw_rgb)
+    _ax, _ay, _aw, _ah = _auto_bbox
+    _is_full = (_aw >= _W * 0.95 and _ah >= _H * 0.95)
+
     col1, col2 = st.columns([1, 1])
-    
+
     with col1:
         st.markdown("### 📷 Original Image")
-        st.image(str(img_path), use_container_width=True)
-        
+        st.image(_raw_rgb, width='stretch')
+
+    with col2:
+        st.markdown("### ✂️ Image Preparation")
+
+        # ── One-click crop mode selector ──────────────────────
+        crop_mode = st.radio(
+            "Choose how to send the image to the model:",
+            options=["🌽 Auto Crop", "🖐 Manual Crop", "📷 Full Image"],
+            index=0,
+            horizontal=True
+        )
+
+        if crop_mode == "🌽 Auto Crop":
+            if _is_full and _W > _H * 1.1:
+                st.info("🌾 Multi-ear / Wide image detected — auto-focusing on prominent foreground cob body.")
+                _ac_x1 = int(_W * 0.10)
+                _ac_x2 = int(_W * 0.50)
+                _ac_cropped = _raw_rgb[:, _ac_x1:_ac_x2]
+            else:
+                _ac_cropped = _auto_cropped
+                if _is_full:
+                    st.info("ℹ️ Using full frame for inference.")
+                else:
+                    st.success(f"✅ Corn ear auto-detected and cropped ({_aw}×{_ah} px). Background removed.")
+            st.image(_ac_cropped, width='stretch',
+                     caption="This region will be analysed by the model")
+            _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+            cv2.imwrite(_c.name, cv2.cvtColor(_ac_cropped, cv2.COLOR_RGB2BGR))
+            _c.close()
+            inference_img_path = Path(_c.name)
+
+        elif crop_mode == "🖐 Manual Crop":
+            st.info("💡 Adjust boundaries or click a quick-framing preset below:")
+            p1, p2, p3, p4 = st.columns(4)
+            if p1.button("🎯 Center Cob", key="btn_center"):
+                st.session_state["mc_x1"] = int(_W * 0.25)
+                st.session_state["mc_x2"] = int(_W * 0.48)
+                st.session_state["mc_y1"] = int(_H * 0.05)
+                st.session_state["mc_y2"] = int(_H * 0.95)
+            if p2.button("🌽 Left Cob", key="btn_left"):
+                st.session_state["mc_x1"] = int(_W * 0.10)
+                st.session_state["mc_x2"] = int(_W * 0.35)
+                st.session_state["mc_y1"] = int(_H * 0.05)
+                st.session_state["mc_y2"] = int(_H * 0.95)
+            if p3.button("🌾 Both Cobs", key="btn_both"):
+                st.session_state["mc_x1"] = int(_W * 0.10)
+                st.session_state["mc_x2"] = int(_W * 0.50)
+                st.session_state["mc_y1"] = int(_H * 0.05)
+                st.session_state["mc_y2"] = int(_H * 0.95)
+            if p4.button("🔄 Reset Full", key="btn_full"):
+                st.session_state["mc_x1"] = 0
+                st.session_state["mc_x2"] = _W
+                st.session_state["mc_y1"] = 0
+                st.session_state["mc_y2"] = _H
+
+            init_x1 = st.session_state.get("mc_x1", int(_W * 0.22) if _is_full else max(0, _ax))
+            init_x2 = st.session_state.get("mc_x2", int(_W * 0.49) if _is_full else min(_W, _ax + _aw))
+            init_y1 = st.session_state.get("mc_y1", int(_H * 0.05) if _is_full else max(0, _ay))
+            init_y2 = st.session_state.get("mc_y2", int(_H * 0.95) if _is_full else min(_H, _ay + _ah))
+
+            cx1 = st.slider("Left Boundary", 0, _W - 10, init_x1, key="slider_x1")
+            cx2 = st.slider("Right Boundary", cx1 + 10, _W, max(cx1 + 10, init_x2), key="slider_x2")
+            cy1 = st.slider("Top Boundary", 0, _H - 10, init_y1, key="slider_y1")
+            cy2 = st.slider("Bottom Boundary", cy1 + 10, _H, max(cy1 + 10, init_y2), key="slider_y2")
+
+            _mc = _raw_rgb[cy1:cy2, cx1:cx2]
+            st.image(_mc, width='stretch',
+                     caption=f"Framed Cob Region — {cx2-cx1}×{cy2-cy1} px")
+            _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+            cv2.imwrite(_c.name, cv2.cvtColor(_mc, cv2.COLOR_RGB2BGR))
+            _c.close()
+            inference_img_path = Path(_c.name)
+
+        else:  # Full Image
+            st.info("📷 Full image will be used. Outdoor background & husk suppression will be applied.")
+            st.image(_raw_rgb, width='stretch')
+            inference_img_path = img_path
+
     # Run Inference
-    if st.button("🔍 Run Quality Assessment Pipeline", use_container_width=True):
+    if st.button("🔍 Run Quality Assessment Pipeline", width='stretch'):
         with st.spinner("Analyzing kernels, extracting features, and mapping storage life..."):
             try:
-                # 1. Segmentation
-                predictor = CornPredictor()
-                mask, overlay, _, confidence = predictor.predict_single(img_path)
+                # 1. Segmentation (uses cropped or full image prepared by user)
+                predictor = CornPredictor(device=use_device)
+                mask, overlay, _, confidence = predictor.predict_single(
+                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input, black_background=use_black_bg
+                )
+
                 
                 # Save overlay temporarily for plotting
                 overlay_temp_path = Path(tempfile.gettempdir()) / f"{img_path.stem}_overlay.png"
@@ -184,6 +298,7 @@ if uploaded_file is not None:
                     "overlay_path": overlay_temp_path,
                     "features": features,
                     "grading": grading,
+                    "variety": getattr(predictor, "last_detected_variety", "Standard Dent Corn (Yellow/White)"),
                     "storage": {
                         "shelf_life_days": shelf_life,
                         "risk_level": risk_level,
@@ -206,7 +321,7 @@ if uploaded_file is not None:
                 
                 # Initialize AI assistant messages
                 st.session_state.assistant_messages = [
-                    {"role": "assistant", "content": f"Hi! I am the AgroGrow expert assistant. I have reviewed this batch and it was classified as **{grading['grade']}** with a Quality Score of **{features['quality_score']:.1f}/100**. Ask me anything about this assessment."}
+                    {"role": "assistant", "content": f"Hi! I am the AgroGrow expert assistant. I have reviewed this batch ({analysis_results['variety']}) and it was classified as **{grading['grade']}** with a Quality Score of **{features['quality_score']:.1f}/100**. Ask me anything about this assessment."}
                 ]
                 
             except Exception as ex:
@@ -216,21 +331,39 @@ if uploaded_file is not None:
     # Display Results if Assessment is Cached
     if st.session_state.current_analysis is not None:
         res = st.session_state.current_analysis
-        
-        with col2:
-            st.markdown("### 🎯 Classification Overlay Mapping")
-            st.image(str(res["overlay_path"]), use_container_width=True)
-            
-            # Map legend
-            st.markdown("""
-                <div style='text-align: center; margin-top: 10px;'>
-                    <span style='color:#00FF00; font-weight:bold; margin-right:15px;'>■ Healthy Kernels</span>
-                    <span style='color:#FF0000; font-weight:bold; margin-right:15px;'>■ Missing Kernels</span>
-                    <span style='color:#0000FF; font-weight:bold;'>■ Diseased Kernels</span>
+
+        st.markdown("---")
+        # Variety Banner
+        variety_name = res.get("variety", "Standard Dent Corn (Yellow/White)")
+        if "flint" in variety_name.lower() or "indian" in variety_name.lower():
+            st.markdown(f"""
+                <div style='background:#F0FDF4; border-left:4px solid #16A34A; padding:12px 16px; border-radius:8px; margin-bottom:14px;'>
+                    <b style='color:#15803D;'>🌾 Identified Variety:</b> <span style='font-size:15px; color:#166534;'><b>{variety_name}</b></span><br/>
+                    <small style='color:#15803D;'>Naturally pigmented ruby-red and purple anthocyanin grains are correctly recognized as healthy culinary grain, not disease defects.</small>
                 </div>
             """, unsafe_allow_html=True)
-            
-        st.markdown("---")
+
+        st.markdown("### 🎯 Classification Overlay Mapping")
+        ov_col1, ov_col2 = st.columns([1, 1])
+        with ov_col1:
+            st.image(str(res["overlay_path"]), width='stretch',
+                     caption="Segmentation overlay — model output")
+        with ov_col2:
+            st.markdown("""
+                <div style='padding:20px; background:#F8FAFC; border-radius:12px;'>
+                <h4 style='color:#1A365D;'>Colour Legend</h4>
+                <p><span style='color:#00BB00; font-size:22px; font-weight:bold;'>■</span>
+                   &nbsp;<b>Healthy Kernels (Green)</b></p>
+                <p><span style='color:#0066FF; font-size:22px; font-weight:bold;'>■</span>
+                   &nbsp;<b>Missing Kernel Sockets (Blue)</b></p>
+                <p><span style='color:#FF0000; font-size:22px; font-weight:bold;'>■</span>
+                   &nbsp;<b>Diseased / Rotten Kernels (Red)</b></p>
+                <p><span style='color:#1A1A1A; font-size:22px; font-weight:bold;'>■</span>
+                   &nbsp;<b>Background outside cob (Black)</b></p>
+                </div>
+            """, unsafe_allow_html=True)
+
+
         st.markdown("### 📊 Metrics Summary")
         
         # Dashboard KPI Cards
@@ -282,7 +415,7 @@ if uploaded_file is not None:
                 </div>
             """, unsafe_allow_html=True)
             
-        st.markdown("Spacer")
+        st.markdown("---")
         
         # Detail Panel (Table + Chart side by side)
         det_col1, det_col2 = st.columns([1, 1.2])
@@ -309,16 +442,16 @@ if uploaded_file is not None:
                     f"{res['features']['bounding_box'][2]}x{res['features']['bounding_box'][3]}"
                 ]
             })
-            st.dataframe(feat_df, use_container_width=True, hide_index=True)
+            st.dataframe(feat_df, width='stretch', hide_index=True)
             
         with det_col2:
             st.markdown("#### 📊 Kernel Segmentation Ratios")
             chart_df = pd.DataFrame({
-                "Class": ["Healthy Kernels", "Diseased Kernels", "Missing Kernels"],
+                "Class": ["Healthy Kernels", "Missing Kernels", "Diseased Kernels"],
                 "Percentage (%)": [
                     res['features']['healthy_percentage'],
-                    res['features']['disease_percentage'],
-                    res['features']['missing_percentage']
+                    res['features']['missing_percentage'],
+                    res['features']['disease_percentage']
                 ]
             })
             fig = px.bar(
@@ -329,13 +462,13 @@ if uploaded_file is not None:
                 color="Class",
                 color_discrete_map={
                     "Healthy Kernels": "#48BB78",
-                    "Diseased Kernels": "#4299E1",
-                    "Missing Kernels": "#F56565"
+                    "Missing Kernels": "#4299E1",
+                    "Diseased Kernels": "#F56565"
                 },
                 text_auto=".2f"
             )
             fig.update_layout(showlegend=False, height=220, margin=dict(l=0, r=0, t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
         st.markdown("---")
         
@@ -415,7 +548,7 @@ if uploaded_file is not None:
                         data=pdf_file,
                         file_name=report_name,
                         mime="application/pdf",
-                        use_container_width=True
+                        width='stretch'
                     )
                     
         # Prediction History Log
@@ -423,6 +556,6 @@ if uploaded_file is not None:
         st.markdown("### 🕒 Assessment History Log (Current Session)")
         if st.session_state.history:
             history_df = pd.DataFrame(st.session_state.history)
-            st.dataframe(history_df, use_container_width=True)
+            st.dataframe(history_df, width='stretch')
         else:
             st.write("No uploads analyzed yet.")

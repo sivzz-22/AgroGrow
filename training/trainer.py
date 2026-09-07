@@ -8,7 +8,7 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from pathlib import Path
 from tqdm import tqdm
 from typing import Dict, List, Tuple
@@ -38,7 +38,7 @@ class CornNetTrainer:
         self.lr_scheduler = lr_scheduler
         self.device = device
         
-        self.scaler = GradScaler(enabled=(device.type == "cuda"))
+        self.scaler = GradScaler("cuda", enabled=(device.type == "cuda"))
         self.evaluator = MetricsEvaluator(num_classes=global_config.num_classes)
         
         # Output directory paths
@@ -72,7 +72,7 @@ class CornNetTrainer:
             self.optimizer.zero_grad()
             
             # Autocast for mixed precision
-            with autocast(enabled=(self.device.type == "cuda")):
+            with autocast("cuda", enabled=(self.device.type == "cuda")):
                 outputs = self.model(images)
                 loss = self.criterion(outputs, masks)
                 
@@ -106,7 +106,7 @@ class CornNetTrainer:
                 images = images.to(self.device, non_blocking=True)
                 masks = masks.to(self.device, non_blocking=True)
                 
-                with autocast(enabled=(self.device.type == "cuda")):
+                with autocast("cuda", enabled=(self.device.type == "cuda")):
                     outputs = self.model(images)
                     loss = self.criterion(outputs, masks)
                     
@@ -124,9 +124,10 @@ class CornNetTrainer:
         return mean_loss, metrics["mean_iou"], metrics["mean_dice"], metrics["pixel_accuracy"]
 
     def fit(self, num_epochs: int = None):
-        """Orchestrates fitting loop with early stopping, validation, checkpoints, and visualization."""
+        """Orchestrates fitting loop with early stopping on Val mIoU, validation, checkpoints, and visualization."""
         epochs = num_epochs if num_epochs is not None else global_config.epochs
-        best_val_loss = float("inf")
+        # Restore best mIoU from checkpoint if resuming, otherwise start from 0
+        best_val_miou = getattr(self, "_resumed_best_miou", 0.0)
         epochs_no_improve = 0
         
         logger.info(f"Training started on device: {self.device}")
@@ -157,18 +158,18 @@ class CornNetTrainer:
             self.history["val_dice"].append(val_dice)
             self.history["pixel_acc"].append(val_acc)
             
-            # Save regular checkpoint
-            self.save_checkpoint(epoch)
+            # Save regular checkpoint (includes best_val_miou for resume)
+            self.save_checkpoint(epoch, best_val_miou)
             
-            # Early stopping and best model saving
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            # Early stopping on Val mIoU (the metric we actually care about)
+            if val_miou > best_val_miou:
+                best_val_miou = val_miou
                 epochs_no_improve = 0
                 self.save_best_model(val_loss, val_miou)
             else:
                 epochs_no_improve += 1
                 if epochs_no_improve >= global_config.early_stopping_patience:
-                    logger.info(f"Early stopping triggered after {epoch+1} epochs.")
+                    logger.info(f"Early stopping triggered after {epoch+1} epochs (no mIoU improvement for {global_config.early_stopping_patience} epochs).")
                     break
                     
         # Generate metric plots
@@ -180,10 +181,11 @@ class CornNetTrainer:
             
         logger.info("Training session completed successfully.")
 
-    def save_checkpoint(self, epoch: int):
+    def save_checkpoint(self, epoch: int, best_val_miou: float = 0.0):
         """Saves current state training checkpoint."""
         checkpoint = {
             "epoch": epoch,
+            "best_val_miou": best_val_miou,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.lr_scheduler.state_dict(),
@@ -192,14 +194,14 @@ class CornNetTrainer:
         }
         torch.save(checkpoint, self.checkpoint_path)
 
-    def load_checkpoint(self) -> bool:
-        """Resumes training state from checkpoint.pth if it exists."""
+    def load_checkpoint(self) -> Tuple[bool, float]:
+        """Resumes training state from checkpoint.pth. Returns (success, best_val_miou)."""
         if not self.checkpoint_path.exists():
             logger.info("No checkpoint found to resume from.")
-            return False
+            return False, 0.0
             
         logger.info(f"Resuming training from checkpoint: {self.checkpoint_path}")
-        checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
         
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -207,7 +209,9 @@ class CornNetTrainer:
         self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
         self.history = checkpoint["history"]
         self.start_epoch = checkpoint["epoch"] + 1
-        return True
+        best_miou = checkpoint.get("best_val_miou", max(self.history["val_miou"], default=0.0))
+        logger.info(f"Resumed from epoch {self.start_epoch}, best Val mIoU so far: {best_miou:.4f}")
+        return True, best_miou
 
     def save_best_model(self, loss: float, miou: float):
         """Saves model weights corresponding to the best validation loss."""

@@ -11,23 +11,16 @@ from typing import List
 
 class DiceLoss(nn.Module):
     """
-    Multi-class Soft Dice Loss.
-    Computes overlap score and returns 1 - Dice.
+    Multi-class Class-Weighted Soft Dice Loss (Equation 10 in paper).
+    Computes per-class overlap weighted by normalized class inverse frequencies.
     """
-    def __init__(self, smooth: float = 1e-6, ignore_index: int = -100):
+    def __init__(self, class_weights: torch.Tensor = None, smooth: float = 1e-6, ignore_index: int = -100):
         super().__init__()
         self.smooth = smooth
         self.ignore_index = ignore_index
+        self.class_weights = class_weights
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            logits (torch.Tensor): Model raw predictions, shape (B, C, H, W).
-            targets (torch.Tensor): Ground truth indices, shape (B, H, W).
-            
-        Returns:
-            torch.Tensor: Scalar Dice loss value.
-        """
         probs = F.softmax(logits, dim=1)
         num_classes = logits.shape[1]
         
@@ -43,13 +36,18 @@ class DiceLoss(nn.Module):
             
         # Compute intersection and sums over batch, spatial dimensions (axes 0, 2, 3)
         intersection = torch.sum(probs * targets_one_hot, dim=(0, 2, 3))
-        cardinality_probs = torch.sum(probs * probs, dim=(0, 2, 3))  # squared values for smooth optimization
+        cardinality_probs = torch.sum(probs * probs, dim=(0, 2, 3))
         cardinality_targets = torch.sum(targets_one_hot * targets_one_hot, dim=(0, 2, 3))
         
         dice_coeffs = (2.0 * intersection + self.smooth) / (cardinality_probs + cardinality_targets + self.smooth)
         
-        # Return average Dice Loss across all classes (excluding background or averaging all)
-        return 1.0 - torch.mean(dice_coeffs)
+        if self.class_weights is not None:
+            weights = self.class_weights.to(logits.device)
+            weights = weights / torch.sum(weights)  # Normalize weights to sum to 1
+            weighted_dice = torch.sum(weights * dice_coeffs)
+            return 1.0 - weighted_dice
+        else:
+            return 1.0 - torch.mean(dice_coeffs)
 
 class HybridLoss(nn.Module):
     """
@@ -74,7 +72,7 @@ class HybridLoss(nn.Module):
             weights_tensor = None
             
         self.wce = nn.CrossEntropyLoss(weight=weights_tensor)
-        self.dice = DiceLoss()
+        self.dice = DiceLoss(class_weights=weights_tensor)
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         loss = 0.0

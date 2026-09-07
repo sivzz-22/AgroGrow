@@ -1,10 +1,14 @@
 """
-AgroGrow Dataset Preparation Module.
-Parses raw images, generates HSV-based pseudo-segmentation masks, and builds
-the standard directory structure for training Corn-Net.
+AgroGrow Dataset Preparation Module — Model 4.
+Generates ground-truth masks with correct class assignments:
+  Class 0 — Background  (soil, leaves, sky, hands)
+  Class 1 — Healthy     (intact yellow/orange/white corn kernels)
+  Class 2 — Missing     (dark empty sockets INSIDE the cob hull)
+  Class 3 — Diseased    (rotten/mouldy kernels — dark brown or fuzzy grey)
 """
 
 import os
+import json
 import shutil
 import hashlib
 import cv2
@@ -14,168 +18,224 @@ from typing import Dict, List, Tuple
 from AgroGrow.config import global_config
 from AgroGrow.utils.logger import logger
 
+
 class DatasetPreparer:
     """
-    Handles file discovery, duplicate detection, corruption checking, split organization,
-    and pseudo-mask generation using computer vision heuristics.
+    Handles file discovery, duplicate detection, corruption checking,
+    split organisation, and pseudo-mask generation.
     """
     def __init__(self, raw_dir: Path, target_dir: Path):
         self.raw_dir = raw_dir
         self.target_dir = target_dir
         self.images_dest = target_dir / "images"
-        self.masks_dest = target_dir / "masks"
-        
-        # Ensure directories exist
+        self.masks_dest  = target_dir / "masks"
         for split in ["train", "val", "test"]:
             (self.images_dest / split).mkdir(parents=True, exist_ok=True)
-            (self.masks_dest / split).mkdir(parents=True, exist_ok=True)
+            (self.masks_dest  / split).mkdir(parents=True, exist_ok=True)
+
+    # ─── helpers ─────────────────────────────────────────────────────────────
 
     def compute_md5(self, file_path: Path) -> str:
-        """Computes MD5 hash of a file to check for duplicates."""
         hasher = hashlib.md5()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 hasher.update(chunk)
         return hasher.hexdigest()
 
+    def parse_labelme_json(self, json_path: Path,
+                           target_size: Tuple[int, int]) -> Tuple[np.ndarray, bool]:
+        """Rasterises Labelme polygon annotations into a class mask."""
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            orig_h = data.get("imageHeight", target_size[0])
+            orig_w = data.get("imageWidth",  target_size[1])
+            mask   = np.zeros((orig_h, orig_w), dtype=np.uint8)
+            sx, sy = target_size[1] / float(orig_w), target_size[0] / float(orig_h)
+            lmap   = {
+                # ── Healthy / Good corn ───────────────────────────────────────
+                "healthy": 1, "corn": 1, "healthy_corn": 1, "good": 1,
+                "goodcorn": 1, "good_corn": 1, "rawcorn": 1, "field_corn": 1,
+                "normal": 1, "intact": 1, "kernel": 1,
+                # ── Missing kernel sockets ────────────────────────────────────
+                "missing": 2, "missing_grain": 2, "missing_kernel": 2,
+                "empty": 2, "socket": 2, "gap": 2,
+                # ── Diseased / Damaged ────────────────────────────────────────
+                "disease": 3, "diseased": 3, "mold": 3, "rot": 3,
+                "damaged": 3, "defective": 3, "bad": 3, "badcorn": 3,
+                "rotten": 3, "mould": 3, "infected": 3,
+                # ── Background ────────────────────────────────────────────────
+                "background": 0, "bg": 0, "other": 0
+            }
+            for shape in data.get("shapes", []):
+                label = shape.get("label", "").lower().strip()
+                cls   = lmap.get(label, 1)
+                pts   = np.array(shape.get("points", []), dtype=np.float32)
+                if len(pts) > 0:
+                    pts[:, 0] *= sx; pts[:, 1] *= sy
+                    cv2.fillPoly(mask, [np.int32(pts)], cls)
+            return cv2.resize(mask, (target_size[1], target_size[0]),
+                              interpolation=cv2.INTER_NEAREST), True
+        except Exception as e:
+            logger.warning(f"Labelme JSON parse failed ({json_path}): {e}")
+            return np.zeros(target_size, dtype=np.uint8), False
+
+    # ─── mask generation ─────────────────────────────────────────────────────
+
     def generate_pseudo_mask(self, img_path: Path) -> Tuple[np.ndarray, bool]:
         """
-        Loads image, detects corn using HSV color segmentation,
-        injects synthetic missing and diseased regions, and outputs mask.
-        
-        Returns:
-            Tuple[np.ndarray, bool]: (mask, success_flag)
+        Priority:
+          1. Use Labelme JSON if present (manual annotations).
+          2. Otherwise generate a CV-based pseudo-mask at 512×512.
+
+        Class definitions (FIXED for Model 4):
+          0 — Background : everything outside the corn ear hull
+          1 — Healthy    : yellow / orange / white intact kernels
+          2 — Missing    : dark empty sockets inside the hull
+                           detected by black-hat ONLY within the yellow region
+          3 — Diseased   : dark-value rotten kernels OR bright-grey mould
         """
-        img = cv2.imread(str(img_path))
-        if img is None:
+        # ── 1. Try Labelme JSON first ──────────────────────────────────────
+        json_path = img_path.with_suffix(".json")
+        if json_path.exists():
+            mask, ok = self.parse_labelme_json(json_path, global_config.input_size)
+            if ok:
+                return mask, True
+
+        # ── 2. CV pseudo-mask ─────────────────────────────────────────────
+        img_bgr = cv2.imread(str(img_path))
+        if img_bgr is None:
             return np.zeros(global_config.input_size, dtype=np.uint8), False
-            
-        # Resize to standardized input size
-        img = cv2.resize(img, global_config.input_size)
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        
-        # Segment yellow/green/orange corn cobs
-        # Hue ranges: Yellow (10-35), Green (35-85), Orange/Red (5-15)
-        lower_yellow = np.array([10, 40, 40])
-        upper_yellow = np.array([40, 255, 255])
-        
-        lower_green = np.array([40, 30, 30])
-        upper_green = np.array([85, 255, 255])
-        
-        mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
-        mask_green = cv2.inRange(hsv, lower_green, upper_green)
-        
-        # Combined corn mask
-        corn_mask = cv2.bitwise_or(mask_yellow, mask_green)
-        
-        # Find contours of corn_mask
-        contours, _ = cv2.findContours(corn_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        cob_hull = np.zeros_like(corn_mask)
-        for cnt in contours:
-            if cv2.contourArea(cnt) > 2000:  # Ignore small noise
-                hull = cv2.convexHull(cnt)
-                cv2.drawContours(cob_hull, [hull], -1, 1, -1)
-                
-        # Create output labels map: 0 = Background, 1 = Healthy Corn
-        label_map = np.zeros(global_config.input_size, dtype=np.uint8)
-        
-        # Classify pixels inside cob boundaries
-        for y in range(global_config.input_size[0]):
-            for x in range(global_config.input_size[1]):
-                if cob_hull[y, x] > 0:
-                    h_val, s_val, v_val = hsv[y, x]
-                    
-                    is_yellow = (10 <= h_val <= 38) and (40 <= s_val) and (40 <= v_val)
-                    is_green = (38 < h_val <= 85) and (30 <= s_val) and (30 <= v_val)
-                    
-                    if not (is_yellow or is_green):
-                        # Defect (mold or rot)
-                        is_mold = (s_val < 70) and (v_val > 90)
-                        is_rot = (v_val < 70) or ((h_val < 22 or h_val > 155) and s_val > 30 and v_val < 110)
-                        if is_mold or is_rot:
-                            label_map[y, x] = 3  # Diseased
-                        else:
-                            label_map[y, x] = 2  # Missing
-                    else:
-                        label_map[y, x] = 1  # Healthy
-        
-        # Find coordinates of healthy corn pixels to place extra synthetic defects
-        corn_coords = np.argwhere(label_map == 1)
-        if len(corn_coords) > 100:
-            # Deterministic pseudo-random generation based on image name hash
-            seed_val = int(hashlib.md5(img_path.name.encode()).hexdigest(), 16) % 10000
-            rng = np.random.default_rng(seed=seed_val)
-            
-            # Inject 2 to 5 missing kernel spots (Class 2)
-            num_missing = rng.integers(2, 6)
-            for _ in range(num_missing):
-                healthy_coords = np.argwhere(label_map == 1)
-                if len(healthy_coords) > 10:
-                    idx = rng.choice(len(healthy_coords))
-                    cy, cx = healthy_coords[idx]
-                    radius = rng.integers(6, 12)
-                    cv2.circle(label_map, (cx, cy), radius, 2, -1)
-                
-            # Inject 1 to 3 diseased kernel spots (Class 3)
-            num_diseased = rng.integers(1, 4)
-            for _ in range(num_diseased):
-                healthy_coords = np.argwhere(label_map == 1)
-                if len(healthy_coords) > 10:
-                    idx = rng.choice(len(healthy_coords))
-                    cy, cx = healthy_coords[idx]
-                    radius = rng.integers(5, 10)
-                    cv2.circle(label_map, (cx, cy), radius, 3, -1)
-                    
+
+        H, W = global_config.input_size          # (512, 512)
+        img  = cv2.resize(img_bgr, (W, H))
+        hsv  = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        lab  = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+
+        h_ch = hsv[:, :, 0]
+        s_ch = hsv[:, :, 1]
+        v_ch = hsv[:, :, 2]
+        L_ch = lab[:, :, 0]
+
+        # ── Step 1 : segment ONLY corn kernel colours ─────────────────────
+        # Yellow / orange kernels  (Hue 8–38, decent saturation & brightness)
+        mask_yellow = cv2.inRange(hsv,
+                                  np.array([8,  40, 50]),
+                                  np.array([38, 255, 255]))
+
+        # Reddish / magenta diseased kernels
+        mask_red = cv2.inRange(hsv,
+                               np.array([0, 60, 40]),
+                               np.array([10, 255, 255]))
+
+        # White / cream sweet-corn — tight thresholds to avoid sky
+        mask_white = ((L_ch > 160) & (s_ch < 35) & (v_ch > 150)).astype(np.uint8) * 255
+
+        # Combined kernel colours
+        kernel_color = cv2.bitwise_or(mask_yellow,
+                       cv2.bitwise_or(mask_red, mask_white))
+
+        # ── Step 2 : build cob hull ───────────────────────────────────────
+        # Close small gaps within the cob (shadow lines between kernel rows)
+        k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
+        kernel_closed = cv2.morphologyEx(kernel_color, cv2.MORPH_CLOSE, k_close)
+
+        contours, _ = cv2.findContours(kernel_closed,
+                                       cv2.RETR_EXTERNAL,
+                                       cv2.CHAIN_APPROX_SIMPLE)
+        cob_hull = np.zeros((H, W), dtype=np.uint8)
+        if contours:
+            sorted_cnts = sorted(contours, key=cv2.contourArea, reverse=True)
+            max_area    = cv2.contourArea(sorted_cnts[0])
+            for cnt in sorted_cnts:
+                area = cv2.contourArea(cnt)
+                # Keep only blobs that are ≥15 % of the largest blob's area
+                # and at least 1200 px — avoids stray dots
+                if area >= 1200 and area >= 0.15 * max_area:
+                    hull_pts = cv2.convexHull(cnt)
+                    cv2.drawContours(cob_hull, [hull_pts], -1, 1, -1)
+
+        if np.sum(cob_hull) == 0:
+            return np.zeros((H, W), dtype=np.uint8), True
+
+        cob_idx = cob_hull > 0
+
+        # ── Step 3 : build label map ──────────────────────────────────────
+        label_map = np.zeros((H, W), dtype=np.uint8)
+        label_map[cob_idx] = 1                   # default inside hull → Healthy
+
+        # ── Step 4 : Diseased (Class 3) ──────────────────────────────────
+        # 3a. Dark-value rotten / burnt kernels inside hull
+        is_rot  = (v_ch < 60) & cob_idx
+        # 3b. Fuzzy grey/white mould — high lightness BUT very low saturation
+        #     Use tighter thresholds than before to avoid catching sky blobs
+        is_mold = (L_ch > 175) & (s_ch < 30) & (v_ch > 130) & cob_idx
+        disease = is_rot | is_mold
+        label_map[disease] = 3
+
+        # ── Step 5 : Missing (Class 2) ────────────────────────────────────
+        # KEY FIX from Model 3:
+        #   Missing sockets are dark gaps INSIDE the yellow kernel region.
+        #   We run black-hat ONLY on the yellow sub-mask (not ~yellow).
+        #   Black-hat highlights dark valleys between bright kernel rows.
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Use a kernel slightly larger than one kernel cell (~15 px at 512 res)
+        k_bh  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        bhat  = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, k_bh)
+
+        # Threshold: dark valleys brighter than 20 (avoids solid black disease)
+        _, bh_thresh = cv2.threshold(bhat, 20, 255, cv2.THRESH_BINARY)
+
+        # Missing: inside hull, NOT already diseased, AND inside the yellow region
+        # (inter-kernel gaps sit between yellow rows → they are NOT yellow themselves)
+        yellow_bool = mask_yellow.astype(bool)
+        # A missing socket pixel is: dark valley inside hull, not disease, not a
+        # yellow kernel, not a white kernel
+        white_bool  = mask_white.astype(bool)
+        missing = ((bh_thresh > 0) & cob_idx & ~disease
+                   & ~yellow_bool & ~white_bool)
+        label_map[missing] = 2
+
         return label_map, True
 
+    # ─── main processing loop ─────────────────────────────────────────────────
+
     def process(self) -> Dict[str, List[str]]:
-        """
-        Iterates over the raw dataset splits, copies files, and creates masks.
-        
-        Returns:
-            Dict[str, List[str]]: Statistics of processing results.
-        """
         logger.info("Starting dataset preprocessing and pseudo-mask generation...")
-        stats = {"copied": [], "corrupted": [], "duplicates": []}
+        stats  = {"copied": [], "corrupted": [], "duplicates": []}
         hashes = set()
-        
-        splits = ["train", "val", "test"]
-        for split in splits:
-            split_src_dir = self.raw_dir / "data" / split
-            if not split_src_dir.exists():
-                logger.warning(f"Source split folder {split_src_dir} does not exist.")
+
+        for split in ["train", "val", "test"]:
+            src = self.raw_dir / "data" / split
+            if not src.exists():
+                logger.warning(f"Source folder not found: {src}")
                 continue
-                
-            # Search for JPG files in subfolders (corn, fruit_and_vegetable corn)
-            for file_path in split_src_dir.rglob("*.jpg"):
-                # 1. Check for duplicates
-                file_hash = self.compute_md5(file_path)
-                if file_hash in hashes:
-                    stats["duplicates"].append(str(file_path))
-                    logger.debug(f"Duplicate file skipped: {file_path.name}")
-                    continue
-                hashes.add(file_hash)
-                
-                # 2. Check for corruption & generate pseudo-mask
-                mask, success = self.generate_pseudo_mask(file_path)
-                if not success:
-                    stats["corrupted"].append(str(file_path))
-                    logger.error(f"Corrupted or invalid image: {file_path}")
-                    continue
-                
-                # 3. Save copy of image (standardized resize)
-                img = cv2.imread(str(file_path))
-                img_resized = cv2.resize(img, global_config.input_size)
-                
-                dest_img_path = self.images_dest / split / file_path.name
-                dest_mask_path = self.masks_dest / split / f"{file_path.stem}.png"
-                
-                cv2.imwrite(str(dest_img_path), img_resized)
-                cv2.imwrite(str(dest_mask_path), mask)
-                
-                stats["copied"].append(str(dest_img_path))
-                
-        logger.info(f"Dataset preparation completed. Copied: {len(stats['copied'])}, "
-                    f"Corrupted: {len(stats['corrupted'])}, Duplicates: {len(stats['duplicates'])}")
+
+            for fp in src.rglob("*.jpg"):
+                h = self.compute_md5(fp)
+                if h in hashes:
+                    stats["duplicates"].append(str(fp)); continue
+                hashes.add(h)
+
+                mask, ok = self.generate_pseudo_mask(fp)
+                if not ok:
+                    stats["corrupted"].append(str(fp))
+                    logger.error(f"Corrupted: {fp}"); continue
+
+                img     = cv2.imread(str(fp))
+                W, H    = global_config.input_size[1], global_config.input_size[0]
+                img_rs  = cv2.resize(img, (W, H))
+
+                dst_img  = self.images_dest / split / fp.name
+                dst_mask = self.masks_dest  / split / f"{fp.stem}.png"
+                cv2.imwrite(str(dst_img),  img_rs)
+                cv2.imwrite(str(dst_mask), mask)
+                stats["copied"].append(str(dst_img))
+
+        logger.info(
+            f"Dataset preparation completed. "
+            f"Copied: {len(stats['copied'])}, "
+            f"Corrupted: {len(stats['corrupted'])}, "
+            f"Duplicates: {len(stats['duplicates'])}"
+        )
         return stats

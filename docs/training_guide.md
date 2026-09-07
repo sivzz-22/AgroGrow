@@ -1,4 +1,4 @@
-# AgroGrow Deep Learning Training Guide
+ # AgroGrow Deep Learning Training Guide
 
 This guide details how to prepare datasets, run deep learning semantic training, and execute storage prediction model training.
 

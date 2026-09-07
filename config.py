@@ -21,30 +21,30 @@ class Config:
     docs_dir: Path = PROJECT_ROOT / "docs"
     
     # Model Configurations
-    input_size: Tuple[int, int] = (256, 256)  # Height, Width
+    input_size: Tuple[int, int] = (512, 512)  # Height, Width (Matches Research Paper Resolution)
     num_classes: int = 4
     class_names: List[str] = field(default_factory=lambda: ["background", "healthy", "missing", "diseased"])
     class_colors: List[Tuple[int, int, int]] = field(default_factory=lambda: [
         (0, 0, 0),        # Background: Black
         (0, 255, 0),      # Healthy: Green
-        (255, 0, 0),      # Missing: Red
-        (0, 0, 255)       # Diseased: Blue
+        (0, 0, 255),      # Missing: Blue
+        (255, 0, 0)       # Diseased: Red
     ])
     
     # Training Hyperparameters
-    batch_size: int = 8
+    batch_size: int = 2
     learning_rate: float = 1e-4
-    epochs: int = 15
-    early_stopping_patience: int = 5
+    epochs: int = 200
+    early_stopping_patience: int = 20
     lr_scheduler_factor: float = 0.5
-    lr_scheduler_patience: int = 2
+    lr_scheduler_patience: int = 5
     weight_decay: float = 1e-4
     device: str = "cuda"  # Will be dynamically validated and set to cpu if cuda is unavailable
     
     # Loss Coefficients
     wce_weight: float = 0.5
     dice_weight: float = 0.5
-    class_weights: List[float] = field(default_factory=lambda: [1.0, 1.0, 2.0, 2.0])  # Emphasize missing & diseased
+    class_weights: List[float] = field(default_factory=lambda: [0.05, 1.0, 8.0, 4.0])  # Model 4: heavily upweight Missing (Class 2) since it is only ~2% of pixels
     
     # Inference / Feature Extraction Parameters
     kernel_density_threshold: float = 0.5

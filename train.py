@@ -3,13 +3,18 @@ AgroGrow Training Pipeline Entrypoint.
 Runs the dataset setup, initializes model and metrics, and launches the trainer.
 """
 
+import os
 import sys
-import torch
-import torch.nn as nn
 from pathlib import Path
 
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+# Optimize PyTorch memory allocation on Windows GPUs
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+import torch
+import torch.nn as nn
 
 from AgroGrow.config import global_config
 from AgroGrow.utils.logger import logger
@@ -88,8 +93,11 @@ def main():
     )
     
     # Check if a checkpoint exists to resume training
-    if trainer.load_checkpoint():
-        logger.info("Resuming training from loaded checkpoint.")
+    resumed, best_miou_so_far = trainer.load_checkpoint()
+    if resumed:
+        logger.info(f"Resuming training from checkpoint. Best Val mIoU so far: {best_miou_so_far:.4f}")
+        # Restore best_val_miou in the trainer so early stopping continues correctly
+        trainer._resumed_best_miou = best_miou_so_far
         
     trainer.fit()
     

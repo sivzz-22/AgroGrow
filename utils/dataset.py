@@ -112,25 +112,34 @@ def get_data_loaders(
                 
     return train_loader, val_loader, test_loader
 
-def generate_overlay(image_rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5) -> np.ndarray:
+def generate_overlay(image_rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5, black_background: bool = False) -> np.ndarray:
     """
-    Generates a color overlay of the segmentation mask on top of the original image.
+    Generates a color overlay of the segmentation mask.
     
     Args:
         image_rgb (np.ndarray): Original image in RGB format, shape (H, W, 3).
         mask (np.ndarray): Segmentation mask, shape (H, W), values 0 to num_classes-1.
         alpha (float): Transparency parameter for blending.
+        black_background (bool): If True, background outside the cob is solid black (0, 0, 0).
         
     Returns:
         np.ndarray: Blended RGB image.
     """
-    # Create empty color canvas
     color_mask = np.zeros_like(image_rgb)
     colors = global_config.class_colors
     
     for class_idx, color in enumerate(colors):
         color_mask[mask == class_idx] = color
         
-    # Blend color mask and original image
-    overlay = cv2.addWeighted(image_rgb, 1.0, color_mask, alpha, 0)
+    non_bg = (mask > 0)
+    if black_background:
+        overlay = np.zeros_like(image_rgb)
+        if np.any(non_bg):
+            blended = cv2.addWeighted(image_rgb, 1.0 - alpha, color_mask, alpha, 0)
+            overlay[non_bg] = blended[non_bg]
+    else:
+        overlay = image_rgb.copy()
+        if np.any(non_bg):
+            blended = cv2.addWeighted(image_rgb, 1.0 - alpha, color_mask, alpha, 0)
+            overlay[non_bg] = blended[non_bg]
     return overlay
