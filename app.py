@@ -102,9 +102,38 @@ st.sidebar.markdown("<h2 style='color:#1A365D;'>🌽 AgroGrow Controls</h2>", un
 st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 🌡️ Storage Parameters")
-temp_input = st.sidebar.slider("Temperature (°C)", min_value=5.0, max_value=45.0, value=25.0, step=0.5)
-humidity_input = st.sidebar.slider("Humidity (%)", min_value=30.0, max_value=98.0, value=70.0, step=1.0)
-storage_type = st.sidebar.selectbox("Storage Type", global_config.storage_types)
+storage_type = st.sidebar.selectbox("Storage Type", global_config.storage_types, index=0)
+
+if storage_type == "Cold Storage":
+    temp_input = st.sidebar.slider(
+        "Temperature (°C) — [Sub-zero / Chilled]",
+        min_value=-20.0,
+        max_value=10.0,
+        value=-2.0,
+        step=0.5,
+        help="Cold storage freezers and deep chilled warehouses operate in sub-zero and chilled ranges (-20°C to +4°C)."
+    )
+    humidity_input = st.sidebar.slider("Humidity (%)", min_value=30.0, max_value=90.0, value=50.0, step=1.0)
+elif storage_type == "Hermetic Bag":
+    temp_input = st.sidebar.slider(
+        "Temperature (°C) — [Sealed Controlled]",
+        min_value=5.0,
+        max_value=40.0,
+        value=22.0,
+        step=0.5,
+        help="Hermetically sealed grain storage bags at controlled ambient temperature."
+    )
+    humidity_input = st.sidebar.slider("Humidity (%)", min_value=30.0, max_value=95.0, value=65.0, step=1.0)
+else:  # Open Air
+    temp_input = st.sidebar.slider(
+        "Temperature (°C) — [Ambient Outdoor]",
+        min_value=10.0,
+        max_value=50.0,
+        value=28.0,
+        step=0.5,
+        help="Open air field / warehouse storage ambient conditions."
+    )
+    humidity_input = st.sidebar.slider("Humidity (%)", min_value=30.0, max_value=98.0, value=75.0, step=1.0)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🌾 Grain Variety")
@@ -381,12 +410,15 @@ if uploaded_file is not None:
         elif "Grade D" in grade_text:
             badge_style = "badge-red"
             
+        raw_conf = res['grading']['confidence']
+        conf_pct = raw_conf * 100.0 if raw_conf <= 1.0 else raw_conf
+        
         with kpi_col1:
             st.markdown(f"""
                 <div class="metric-card" style="border-left-color: #4299E1;">
                     <div class="metric-title">Quality Grade</div>
                     <div class="metric-value">{grade_text}</div>
-                    <span class="badge {badge_style}">Confidence: {res['grading']['confidence']:.1f}%</span>
+                    <span class="badge {badge_style}">Confidence: {conf_pct:.1f}%</span>
                 </div>
             """, unsafe_allow_html=True)
             

@@ -50,11 +50,11 @@ class Config:
     kernel_density_threshold: float = 0.5
     min_corn_area_pixels: int = 1000
     
-    # Quality Grading Criteria
+    # Quality Grading Criteria (Aligned with USDA / ISO agricultural standards)
     grade_thresholds: dict = field(default_factory=lambda: {
-        "A": {"min_healthy": 90.0, "max_disease": 0.0, "max_missing": 2.0},
-        "B": {"min_healthy": 75.0, "max_disease": 3.0, "max_missing": 8.0},
-        "C": {"min_healthy": 50.0, "max_disease": 10.0, "max_missing": 15.0}
+        "A": {"min_healthy": 88.0, "max_disease": 4.0, "max_missing": 4.0},
+        "B": {"min_healthy": 75.0, "max_disease": 8.0, "max_missing": 10.0},
+        "C": {"min_healthy": 55.0, "max_disease": 16.0, "max_missing": 18.0}
     })
     
     # Storage Types

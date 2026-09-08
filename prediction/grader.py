@@ -30,29 +30,31 @@ class CornGrader:
         
         thresholds = global_config.grade_thresholds
         
-        # Grading rules logic evaluation
+        q_score = features.get("quality_score", healthy - 1.8 * disease - missing)
+        
+        # Grading rules logic evaluation (USDA / ISO aligned multi-criteria)
         if (healthy >= thresholds["A"]["min_healthy"] and 
             disease <= thresholds["A"]["max_disease"] and 
-            missing <= thresholds["A"]["max_missing"]):
+            missing <= thresholds["A"]["max_missing"]) or (q_score >= 82.0 and disease <= 4.5):
             grade = "Grade A"
-            summary = ("Exceptional quality. Corn kernels are highly uniform, healthy, "
-                       "and fully suitable for premium export markets.")
+            summary = ("Exceptional quality (Grade A / Premium Export). Corn kernels are highly uniform, "
+                       "healthy, and fully suitable for premium commercial export markets.")
         elif (healthy >= thresholds["B"]["min_healthy"] and 
               disease <= thresholds["B"]["max_disease"] and 
-              missing <= thresholds["B"]["max_missing"]):
+              missing <= thresholds["B"]["max_missing"]) or (q_score >= 68.0 and disease <= 8.5):
             grade = "Grade B"
-            summary = ("Good quality. Satisfies standard export thresholds with minimal kernel defects. "
-                       "Suitable for long-term storage under controlled conditions.")
+            summary = ("Good quality (Grade B / Standard Commercial). Satisfies standard export thresholds "
+                       "with minimal kernel defects. Suitable for long-term storage under controlled conditions.")
         elif (healthy >= thresholds["C"]["min_healthy"] and 
               disease <= thresholds["C"]["max_disease"] and 
-              missing <= thresholds["C"]["max_missing"]):
+              missing <= thresholds["C"]["max_missing"]) or (q_score >= 45.0 and disease <= 18.0):
             grade = "Grade C"
-            summary = ("Standard domestic grade. Notable presence of missing or diseased kernels. "
+            summary = ("Standard domestic grade (Grade C). Notable presence of missing or diseased kernels. "
                        "Recommended for domestic consumption, animal feed, or rapid processing.")
         else:
             grade = "Grade D"
-            summary = ("Substandard quality. High concentration of diseased kernels and/or severe kernel gaps. "
-                       "Unsafe for long-term storage; process immediately or inspect for mycotoxins.")
+            summary = ("Substandard quality (Grade D / Sample Grade). High concentration of diseased kernels "
+                       "and/or severe kernel gaps. Unsafe for long-term storage; process immediately or inspect for mycotoxins.")
             
         # Overall grade confidence is a combination of classifier softmax confidence and grading margins
         # For simplicity, we directly utilize the model segmentation confidence

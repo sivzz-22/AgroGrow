@@ -208,11 +208,11 @@ def clean_prediction_mask(img_rgb: np.ndarray,
     # 6. Final Pixel Classification within Cob ROI
     clean_mask = np.zeros((h, w), dtype=np.uint8)
 
-    # Class 3: Diseased / Rotten Kernels
+    # Class 3: Diseased / Rotten Kernels (excluding foliage and husk leaves)
     if probs is not None and probs.shape[0] >= 4:
-        m_dis = inside & ((probs[3] >= 0.28) | ((raw_mask == 3) & (probs[3] >= probs[1])))
+        m_dis = inside & (~rej_green) & (~rej_husk) & ((probs[3] >= 0.32) | ((raw_mask == 3) & (probs[3] >= probs[1])))
     else:
-        m_dis = inside & (raw_mask == 3)
+        m_dis = inside & (~rej_green) & (~rej_husk) & (raw_mask == 3)
 
     # Class 1: Healthy Kernels
     m_hlth = inside & (~m_dis) & ((raw_mask == 1) | m_yellow) & (~rej_green)

@@ -42,11 +42,20 @@ class StorageDataGenerator:
         corn_area = np.random.uniform(8000, 22000, self.num_samples)
         defect_area = (disease_pct + missing_pct) / 100.0 * corn_area
         
-        # 2. Generate environmental features
-        temperature = np.random.uniform(5.0, 42.0, self.num_samples)
-        humidity = np.random.uniform(40.0, 95.0, self.num_samples)
-        
+        # 2. Generate environmental features tailored by storage type
         storage_types = np.random.choice(global_config.storage_types, self.num_samples)
+        
+        temperatures = []
+        for st_type in storage_types:
+            if st_type == "Cold Storage":
+                # Cold storage operates in sub-zero and chilled ranges (-20°C to +10°C)
+                temperatures.append(np.random.uniform(-20.0, 10.0))
+            elif st_type == "Hermetic Bag":
+                temperatures.append(np.random.uniform(5.0, 40.0))
+            else:  # Open Air
+                temperatures.append(np.random.uniform(10.0, 48.0))
+        temperature = np.array(temperatures)
+        humidity = np.random.uniform(30.0, 95.0, self.num_samples)
         
         # 3. Compute target shelf life
         shelf_life_days = []
@@ -59,18 +68,18 @@ class StorageDataGenerator:
             
             # Base shelf life
             if st_type == "Cold Storage":
-                base_life = 200.0
-                # Cold storage regulates temperature, so damp the effect of external high temp
-                eff_temp = 5.0 + 0.15 * (temp - 5.0)
+                base_life = 260.0
+                # In cold storage, sub-zero temperatures preserve kernels with minimal enzymatic decay
+                eff_temp = max(-15.0, temp)
+                temp_factor = np.exp(-0.035 * (eff_temp - 0.0))
             elif st_type == "Hermetic Bag":
                 base_life = 130.0
                 eff_temp = temp
+                temp_factor = np.exp(-0.04 * (eff_temp - 15.0))
             else:  # Open Air
                 base_life = 40.0
                 eff_temp = temp
-                
-            # Temp factor (optimal is 10°C, higher temp degrades quality exponentially)
-            temp_factor = np.exp(-0.04 * (eff_temp - 10.0))
+                temp_factor = np.exp(-0.045 * (eff_temp - 18.0))
             
             # Humidity factor (optimal is 55% RH or below, higher humidity increases mold)
             hum_factor = np.exp(-0.015 * (hum - 55.0))
