@@ -130,26 +130,18 @@ def test_storage_prediction():
     print(f"[SUCCESS] test_storage_prediction passed! (Predicted {pred_days:.1f} days, {risk_level})")
 
 def test_overlay_generation():
-    """Validates light studio background and translucent overlay generation."""
+    """Validates natural photo overlay generation without black background."""
     print("[RUNNING] test_overlay_generation...")
     from AgroGrow.utils.dataset import generate_overlay
     dummy_img = np.ones((100, 100, 3), dtype=np.uint8) * 128
     dummy_mask = np.zeros((100, 100), dtype=np.uint8)
     dummy_mask[20:80, 20:80] = 1  # Cob region
 
-    # Test Light Studio Background
-    ov_light = generate_overlay(dummy_img, dummy_mask, background_style="light")
-    assert ov_light.shape == dummy_img.shape, "Shape mismatch in light overlay"
-    # Background pixels outside cob (e.g. at 0, 0) should be light neutral (244, 246, 248)
-    assert np.all(ov_light[0, 0] == [244, 246, 248]), f"Expected light background (244, 246, 248), got {ov_light[0, 0]}"
-
-    # Test Soft Translucent Blend
-    ov_soft = generate_overlay(dummy_img, dummy_mask, background_style="soft_blend")
-    assert ov_soft.shape == dummy_img.shape, "Shape mismatch in soft overlay"
-
-    # Test Full Photo Blend
-    ov_photo = generate_overlay(dummy_img, dummy_mask, background_style="photo")
-    assert ov_photo.shape == dummy_img.shape, "Shape mismatch in photo overlay"
+    # Test Default Photo Overlay (NO black background)
+    ov = generate_overlay(dummy_img, dummy_mask)
+    assert ov.shape == dummy_img.shape, "Shape mismatch in overlay"
+    # Background outside cob should preserve natural photo pixels, NOT black (0, 0, 0)
+    assert not np.all(ov[0, 0] == [0, 0, 0]), "Background was unexpectedly rendered pitch black!"
     print("[SUCCESS] test_overlay_generation passed!")
 
 def test_clean_prediction_mask():

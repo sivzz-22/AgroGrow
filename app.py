@@ -120,36 +120,6 @@ corn_variety_input = st.sidebar.selectbox(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🎨 Display Theme")
-overlay_style = st.sidebar.radio(
-    "Overlay Background",
-    options=[
-        "🌫️ Studio Light Neutral (Clean & Modern)",
-        "🌤️ Soft Light Translucent Blend (Non-Opaque)",
-        "🖼️ Semi-Transparent Photo Blend",
-        "🌑 Dark Slate / Black"
-    ],
-    index=0,
-    help="Studio Light Neutral replaces harsh black with a clean studio backdrop. Soft Light provides a gentle translucent wash."
-)
-if "Studio Light" in overlay_style:
-    bg_style_choice = "light"
-    bg_legend_desc = "Background outside cob (Studio Light Slate)"
-    bg_legend_color = "#E2E8F0"
-elif "Soft Light" in overlay_style:
-    bg_style_choice = "soft_blend"
-    bg_legend_desc = "Background outside cob (Translucent Light Veil)"
-    bg_legend_color = "#CBD5E1"
-elif "Photo Blend" in overlay_style:
-    bg_style_choice = "photo"
-    bg_legend_desc = "Background outside cob (Natural Photo Context)"
-    bg_legend_color = "#94A3B8"
-else:
-    bg_style_choice = "black"
-    bg_legend_desc = "Background outside cob (Dark Slate / Black)"
-    bg_legend_color = "#1E293B"
-
-st.sidebar.markdown("---")
 st.sidebar.markdown("### 📂 Model Configurations")
 has_cuda = torch.cuda.is_available()
 device_options = ["Auto (GPU if available)", "CPU (Safe Mode)"] if has_cuda else ["CPU (Safe Mode)"]
@@ -188,44 +158,40 @@ if uploaded_file is not None:
     _ax, _ay, _aw, _ah = _auto_bbox
     _is_full = (_aw >= _W * 0.95 and _ah >= _H * 0.95)
 
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        st.markdown("### 📷 Original Image")
-        st.image(_raw_rgb, width='stretch')
-
-    with col2:
-        st.markdown("### ✂️ Image Preparation")
-
-        # ── One-click crop mode selector ──────────────────────
+    # ── Clean Framing Control Bar ─────────────────────────────────
+    st.markdown("### ✂️ Cob Framing & Inspection Mode")
+    f_col1, f_col2 = st.columns([1, 2])
+    with f_col1:
         crop_mode = st.radio(
-            "Choose how to send the image to the model:",
-            options=["🌽 Auto Crop", "🖐 Manual Crop", "📷 Full Image"],
+            "Select framing mode:",
+            options=["🌽 Auto Crop Ear", "🖐 Manual Crop", "📷 Full Image"],
             index=0,
             horizontal=True
         )
-
-        if crop_mode == "🌽 Auto Crop":
-            if _is_full and _W > _H * 1.1:
-                st.info("🌾 Multi-ear / Wide image detected — auto-focusing on prominent foreground cob body.")
-                _ac_x1 = int(_W * 0.10)
-                _ac_x2 = int(_W * 0.50)
-                _ac_cropped = _raw_rgb[:, _ac_x1:_ac_x2]
+    with f_col2:
+        if crop_mode == "🌽 Auto Crop Ear":
+            if _is_full:
+                st.info("ℹ️ Full image framed for inference.")
             else:
-                _ac_cropped = _auto_cropped
-                if _is_full:
-                    st.info("ℹ️ Using full frame for inference.")
-                else:
-                    st.success(f"✅ Corn ear auto-detected and cropped ({_aw}×{_ah} px). Background removed.")
-            st.image(_ac_cropped, width='stretch',
-                     caption="This region will be analysed by the model")
-            _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-            cv2.imwrite(_c.name, cv2.cvtColor(_ac_cropped, cv2.COLOR_RGB2BGR))
-            _c.close()
-            inference_img_path = Path(_c.name)
-
+                st.success(f"✅ Corn ear auto-detected and focused ({_aw}×{_ah} px). Outdoor background suppressed.")
         elif crop_mode == "🖐 Manual Crop":
-            st.info("💡 Adjust boundaries or click a quick-framing preset below:")
+            st.info("💡 Adjust framing sliders below to isolate specific corn ears.")
+        else:
+            st.info("📷 Full photograph will be analyzed with smart background suppression.")
+
+    # Determine inference image and target crop
+    if crop_mode == "🌽 Auto Crop Ear":
+        if _is_full and _W > _H * 1.1:
+            _target_crop = _raw_rgb[:, int(_W * 0.10):int(_W * 0.50)]
+        else:
+            _target_crop = _auto_cropped
+        _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        cv2.imwrite(_c.name, cv2.cvtColor(_target_crop, cv2.COLOR_RGB2BGR))
+        _c.close()
+        inference_img_path = Path(_c.name)
+
+    elif crop_mode == "🖐 Manual Crop":
+        with st.expander("🛠️ Manual Framing Controls & Presets", expanded=True):
             p1, p2, p3, p4 = st.columns(4)
             if p1.button("🎯 Center Cob", key="btn_center"):
                 st.session_state["mc_x1"] = int(_W * 0.25)
@@ -253,35 +219,45 @@ if uploaded_file is not None:
             init_y1 = st.session_state.get("mc_y1", int(_H * 0.05) if _is_full else max(0, _ay))
             init_y2 = st.session_state.get("mc_y2", int(_H * 0.95) if _is_full else min(_H, _ay + _ah))
 
-            cx1 = st.slider("Left Boundary", 0, _W - 10, init_x1, key="slider_x1")
-            cx2 = st.slider("Right Boundary", cx1 + 10, _W, max(cx1 + 10, init_x2), key="slider_x2")
-            cy1 = st.slider("Top Boundary", 0, _H - 10, init_y1, key="slider_y1")
-            cy2 = st.slider("Bottom Boundary", cy1 + 10, _H, max(cy1 + 10, init_y2), key="slider_y2")
+            s1, s2 = st.columns(2)
+            with s1:
+                cx1 = st.slider("Left Boundary", 0, _W - 10, init_x1, key="slider_x1")
+                cx2 = st.slider("Right Boundary", cx1 + 10, _W, max(cx1 + 10, init_x2), key="slider_x2")
+            with s2:
+                cy1 = st.slider("Top Boundary", 0, _H - 10, init_y1, key="slider_y1")
+                cy2 = st.slider("Bottom Boundary", cy1 + 10, _H, max(cy1 + 10, init_y2), key="slider_y2")
 
-            _mc = _raw_rgb[cy1:cy2, cx1:cx2]
-            st.image(_mc, width='stretch',
-                     caption=f"Framed Cob Region — {cx2-cx1}×{cy2-cy1} px")
-            _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-            cv2.imwrite(_c.name, cv2.cvtColor(_mc, cv2.COLOR_RGB2BGR))
-            _c.close()
-            inference_img_path = Path(_c.name)
+        _target_crop = _raw_rgb[cy1:cy2, cx1:cx2]
+        _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        cv2.imwrite(_c.name, cv2.cvtColor(_target_crop, cv2.COLOR_RGB2BGR))
+        _c.close()
+        inference_img_path = Path(_c.name)
 
-        else:  # Full Image
-            st.info("📷 Full image will be used. Outdoor background & husk suppression will be applied.")
-            st.image(_raw_rgb, width='stretch')
-            inference_img_path = img_path
+    else:  # Full Image
+        _target_crop = _raw_rgb
+        inference_img_path = img_path
 
-    # Run Inference
+    # ── Perfectly Symmetrical Side-by-Side Images ─────────────────
+    st.markdown("---")
+    v_col1, v_col2 = st.columns(2)
+    with v_col1:
+        st.markdown("<h4 style='color:#1A365D; margin-bottom:8px;'>📷 Original Image</h4>", unsafe_allow_html=True)
+        st.image(_raw_rgb, width='stretch', caption=f"Original Photo ({_W}×{_H} px)")
+    with v_col2:
+        st.markdown("<h4 style='color:#1A365D; margin-bottom:8px;'>🎯 Region for Analysis</h4>", unsafe_allow_html=True)
+        st.image(_target_crop, width='stretch', caption=f"Model Input ({_target_crop.shape[1]}×{_target_crop.shape[0]} px)")
+
+    # Run Inference Button
+    st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
     if st.button("🔍 Run Quality Assessment Pipeline", width='stretch'):
         with st.spinner("Analyzing kernels, extracting features, and mapping storage life..."):
             try:
                 # 1. Segmentation (uses cropped or full image prepared by user)
                 predictor = CornPredictor(device=use_device)
                 mask, overlay, _, confidence = predictor.predict_single(
-                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input, background_style=bg_style_choice
+                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input
                 )
 
-                
                 # Save overlay temporarily for plotting
                 overlay_temp_path = Path(tempfile.gettempdir()) / f"{img_path.stem}_overlay.png"
                 cv2.imwrite(str(overlay_temp_path), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
@@ -369,17 +345,15 @@ if uploaded_file is not None:
             st.image(str(res["overlay_path"]), width='stretch',
                      caption="Segmentation overlay — model output")
         with ov_col2:
-            st.markdown(f"""
-                <div style='padding:20px; background:#F8FAFC; border-radius:12px; border:1px solid #E2E8F0;'>
-                <h4 style='color:#1A365D; margin-top:0;'>Colour Legend</h4>
-                <p><span style='color:#00BB00; font-size:22px; font-weight:bold;'>■</span>
+            st.markdown("""
+                <div style='padding:22px; background:#F8FAFC; border-radius:12px; border:1px solid #E2E8F0;'>
+                <h4 style='color:#1A365D; margin-top:0; margin-bottom:16px;'>Colour Legend</h4>
+                <p style='margin-bottom:12px;'><span style='color:#00BB00; font-size:22px; font-weight:bold;'>■</span>
                    &nbsp;<b>Healthy Kernels (Green)</b></p>
-                <p><span style='color:#0066FF; font-size:22px; font-weight:bold;'>■</span>
+                <p style='margin-bottom:12px;'><span style='color:#0066FF; font-size:22px; font-weight:bold;'>■</span>
                    &nbsp;<b>Missing Kernel Sockets (Blue)</b></p>
-                <p><span style='color:#FF0000; font-size:22px; font-weight:bold;'>■</span>
+                <p style='margin-bottom:12px;'><span style='color:#FF0000; font-size:22px; font-weight:bold;'>■</span>
                    &nbsp;<b>Diseased / Rotten Kernels (Red)</b></p>
-                <p><span style='color:{bg_legend_color}; font-size:22px; font-weight:bold; text-shadow: 0 0 1px #94A3B8;'>■</span>
-                   &nbsp;<b>{bg_legend_desc}</b></p>
                 </div>
             """, unsafe_allow_html=True)
 

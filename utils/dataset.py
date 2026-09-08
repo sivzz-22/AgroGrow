@@ -117,7 +117,7 @@ def generate_overlay(
     mask: np.ndarray,
     alpha: float = 0.55,
     black_background: bool = False,
-    background_style: str = "light"
+    **kwargs
 ) -> np.ndarray:
     """
     Generates a color overlay of the segmentation mask.
@@ -126,11 +126,7 @@ def generate_overlay(
         image_rgb (np.ndarray): Original image in RGB format, shape (H, W, 3).
         mask (np.ndarray): Segmentation mask, shape (H, W), values 0 to num_classes-1.
         alpha (float): Transparency parameter for blending.
-        black_background (bool): Deprecated compatibility flag. If True, maps to background_style='black'.
-        background_style (str): 'light' (clean soft slate/off-white (244, 246, 248)),
-                                'soft_blend' (translucent light photo wash, non-opaque),
-                                'photo' (full original photo background),
-                                'black' (solid dark/black).
+        black_background (bool): If True, background outside cob is solid black. Default False (natural photo).
         
     Returns:
         np.ndarray: Blended RGB image.
@@ -143,23 +139,10 @@ def generate_overlay(
         
     non_bg = (mask > 0)
     
-    # Resolve style
-    style = background_style.lower() if background_style else "light"
-    if black_background and style not in ["light", "soft_blend"]:
-        style = "black"
-
-    # Base background setup
-    if style == "light":
-        # Clean Studio Light Neutral (soft slate / ivory grey #F4F6F8)
-        overlay = np.full_like(image_rgb, (244, 246, 248), dtype=np.uint8)
-    elif style == "soft_blend":
-        # Translucent light veil over photo (subtly visible photo context, non-opaque)
-        overlay = cv2.addWeighted(image_rgb, 0.22, np.full_like(image_rgb, 245), 0.78, 0)
-    elif style == "black":
-        # Solid dark mode
+    # Natural photo context overlay (no black background)
+    if black_background:
         overlay = np.zeros_like(image_rgb)
-    else:  # 'photo'
-        # Full photo context
+    else:
         overlay = image_rgb.copy()
         
     if np.any(non_bg):
@@ -167,4 +150,5 @@ def generate_overlay(
         overlay[non_bg] = blended[non_bg]
         
     return overlay
+
 

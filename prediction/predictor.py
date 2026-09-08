@@ -284,7 +284,7 @@ class CornPredictor:
                        auto_crop: bool = True,
                        corn_variety: str = "auto",
                        black_background: bool = False,
-                       background_style: str = "light"
+                       **kwargs
                        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
         Full pipeline:
@@ -292,7 +292,7 @@ class CornPredictor:
           2. Auto-crop to corn ear if requested (strips outdoor background)
           3. Run CornNet inference (with transparent CPU fallback if CUDA has issues)
           4. Post-processing to suppress background bleed and handle corn varieties
-          5. Generate colour overlay (Green=Healthy, Blue=Missing, Red=Diseased, background styled)
+          5. Generate colour overlay (Green=Healthy, Blue=Missing, Red=Diseased)
           6. Return mask, overlay, prob_map, confidence
         """
         img_path = Path(img_path)
@@ -334,10 +334,8 @@ class CornPredictor:
         mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
         self.last_detected_variety = variety_name
 
-        # ── Build overlay with chosen background style (Light Studio Neutral default)
-        if black_background and background_style not in ["light", "soft_blend"]:
-            background_style = "black"
-        overlay = generate_overlay(img_display, mask, background_style=background_style)
+        # ── Build clean semi-transparent overlay (No black background) ──
+        overlay = generate_overlay(img_display, mask, black_background=black_background, **kwargs)
 
         # ── Confidence ───────────────────────────────────────────────────
         corn_px = (mask > 0)
