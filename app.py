@@ -143,6 +143,11 @@ st.markdown("---")
 uploaded_file = st.file_uploader("Upload Raw Corn Image (.jpg)", type=["jpg", "jpeg"])
 
 if uploaded_file is not None:
+    # Reset stale cached analysis if new image is uploaded
+    if st.session_state.get("last_uploaded_name") != uploaded_file.name:
+        st.session_state.last_uploaded_name = uploaded_file.name
+        st.session_state.current_analysis = None
+
     # Save to temp file
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     tfile.write(uploaded_file.getvalue())
@@ -168,6 +173,10 @@ if uploaded_file is not None:
             index=0,
             horizontal=True
         )
+    if st.session_state.get("last_crop_mode") != crop_mode:
+        st.session_state.last_crop_mode = crop_mode
+        st.session_state.current_analysis = None
+
     with f_col2:
         if crop_mode == "🌽 Auto Crop Ear":
             if _is_full:

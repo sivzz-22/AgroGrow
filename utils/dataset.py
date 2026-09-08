@@ -116,34 +116,29 @@ def generate_overlay(
     image_rgb: np.ndarray,
     mask: np.ndarray,
     alpha: float = 0.55,
-    black_background: bool = False,
     **kwargs
 ) -> np.ndarray:
     """
-    Generates a color overlay of the segmentation mask.
+    Generates a color overlay of the segmentation mask blended over the natural photo.
     
     Args:
         image_rgb (np.ndarray): Original image in RGB format, shape (H, W, 3).
         mask (np.ndarray): Segmentation mask, shape (H, W), values 0 to num_classes-1.
         alpha (float): Transparency parameter for blending.
-        black_background (bool): If True, background outside cob is solid black. Default False (natural photo).
         
     Returns:
-        np.ndarray: Blended RGB image.
+        np.ndarray: Blended RGB image over natural photo background.
     """
     color_mask = np.zeros_like(image_rgb)
     colors = global_config.class_colors
     
     for class_idx, color in enumerate(colors):
+        if class_idx == 0:
+            continue  # Class 0 is background — leave uncolored so original photo shows through
         color_mask[mask == class_idx] = color
         
     non_bg = (mask > 0)
-    
-    # Natural photo context overlay (no black background)
-    if black_background:
-        overlay = np.zeros_like(image_rgb)
-    else:
-        overlay = image_rgb.copy()
+    overlay = image_rgb.copy()
         
     if np.any(non_bg):
         blended = cv2.addWeighted(image_rgb, 1.0 - alpha, color_mask, alpha, 0)

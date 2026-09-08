@@ -283,7 +283,6 @@ class CornPredictor:
                        img_path: Union[str, Path],
                        auto_crop: bool = True,
                        corn_variety: str = "auto",
-                       black_background: bool = False,
                        **kwargs
                        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
@@ -334,8 +333,8 @@ class CornPredictor:
         mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
         self.last_detected_variety = variety_name
 
-        # ── Build clean semi-transparent overlay (No black background) ──
-        overlay = generate_overlay(img_display, mask, black_background=black_background, **kwargs)
+        # ── Build clean semi-transparent overlay (Natural Photo Blend) ───
+        overlay = generate_overlay(img_display, mask, **kwargs)
 
         # ── Confidence ───────────────────────────────────────────────────
         corn_px = (mask > 0)
