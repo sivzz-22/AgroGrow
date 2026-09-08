@@ -126,10 +126,10 @@ def clean_prediction_mask(img_rgb: np.ndarray,
     gy = np.abs(cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3))
     energy = cv2.blur(gx * gy, (15, 15))
     max_e = float(np.max(energy))
-    if max_e < 1e-4:
-        norm_e = np.ones((h, w), dtype=np.float32)
-    else:
-        norm_e = energy / (max_e + 1e-6)
+    if max_e < 5.0:
+        # Flat/smooth non-corn image (wall, sky, paper, solid background)
+        return np.zeros((h, w), dtype=np.uint8), "No Corn Detected"
+    norm_e = energy / (max_e + 1e-6)
 
     # Resize probs to matching (H, W) if needed
     if probs is not None and probs.shape[1:] != (h, w):
@@ -140,22 +140,24 @@ def clean_prediction_mask(img_rgb: np.ndarray,
 
     # Confirmed disease signal from model
     if probs is not None and probs.shape[0] >= 4:
-        is_dis_cue = (probs[3] >= 0.25) | ((raw_mask == 3) & (probs[3] >= probs[1]))
+        is_dis_cue = ((probs[3] >= 0.32) | ((raw_mask == 3) & (probs[3] >= probs[1]))) & (norm_e > 0.05)
     else:
-        is_dis_cue = (raw_mask == 3)
+        is_dis_cue = (raw_mask == 3) & (norm_e > 0.05)
 
     # 2. Kernel and Ear Cues
     # Healthy yellow kernels (Hue 10-35, rich saturation, distinct warm tone)
-    m_yellow = (hsv[:, :, 0] >= 10) & (hsv[:, :, 0] <= 35) & (hsv[:, :, 1] >= 65) & (hsv[:, :, 2] >= 50) & (R > B * 1.35)
-    m_white  = (lab[:, :, 0] > 145) & (hsv[:, :, 1] < 50) & (hsv[:, :, 2] > 135)
+    m_yellow = (hsv[:, :, 0] >= 10) & (hsv[:, :, 0] <= 35) & (hsv[:, :, 1] >= 55) & (hsv[:, :, 2] >= 40) & (R > B * 1.25)
     
     # True Anthocyanin pigmentation in Flint corn (distinct from yellow-orange dent corn):
     # Ruby red (Hue 0-5 or 172-180, high saturation, never dark necrotic decay)
-    m_ruby   = ((hsv[:, :, 0] <= 5) | (hsv[:, :, 0] >= 172)) & (hsv[:, :, 1] >= 85) & (hsv[:, :, 2] >= 35) & (~is_dis_cue)
+    m_ruby   = ((hsv[:, :, 0] <= 8) | (hsv[:, :, 0] >= 168)) & (hsv[:, :, 1] >= 75) & (hsv[:, :, 2] >= 35) & (~is_dis_cue)
     # Deep purple/violet anthocyanin
-    m_purple = (hsv[:, :, 0] >= 120) & (hsv[:, :, 0] <= 165) & (hsv[:, :, 1] >= 55) & (hsv[:, :, 2] >= 30) & (~is_dis_cue)
+    m_purple = (hsv[:, :, 0] >= 120) & (hsv[:, :, 0] <= 165) & (hsv[:, :, 1] >= 50) & (hsv[:, :, 2] >= 30) & (~is_dis_cue)
     # Bronze/amber grain (textured, saturated)
-    m_bronze = (hsv[:, :, 0] <= 28) & (hsv[:, :, 1] >= 75) & (hsv[:, :, 2] >= 40) & (R > B * 1.35) & (~is_dis_cue)
+    m_bronze = (hsv[:, :, 0] <= 28) & (hsv[:, :, 1] >= 70) & (hsv[:, :, 2] >= 40) & (R > B * 1.30) & (~is_dis_cue)
+    # White corn (requires texture and presence of warm kernel tones to prevent white walls/paper)
+    has_warm_kernels = (np.sum(m_yellow | m_ruby | m_purple) > 50)
+    m_white  = (lab[:, :, 0] > 145) & (hsv[:, :, 1] < 50) & (hsv[:, :, 2] > 135) & (norm_e > 0.12) & has_warm_kernels
     
     corn_kernel_cues = (m_yellow | m_white | m_ruby | m_purple | m_bronze)
 
@@ -166,33 +168,42 @@ def clean_prediction_mask(img_rgb: np.ndarray,
     rej_sky   = (hsv[:, :, 0] >= 90) & (hsv[:, :, 0] <= 135) & (hsv[:, :, 1] >= 25)
 
     # 4. Cob Region-of-Interest (ROI) Extraction
+    min_kernel_px = max(80, int(0.005 * h * w))
+    has_kernel_presence = (np.sum(corn_kernel_cues) >= min_kernel_px)
+
     # Core seeds combine textured corn kernels with confirmed diseased detections
-    cob_seeds = ((corn_kernel_cues & (norm_e > 0.06)) | is_dis_cue) & \
+    cob_seeds = (corn_kernel_cues | (is_dis_cue if has_kernel_presence else False)) & \
                 (~rej_green) & (~rej_husk) & (~rej_mud) & (~rej_sky)
 
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(cob_seeds.astype(np.uint8), connectivity=8)
     cob_roi = np.zeros((h, w), dtype=np.uint8)
 
+    min_seed_px = max(100, int(0.006 * h * w))
     if num_labels > 1:
         largest_lbl = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
-        main_cob_mask = (labels == largest_lbl).astype(np.uint8)
-        
-        # Close gaps within the cob body (connecting healthy kernels and internal diseased rot)
-        k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
-        cob_roi = cv2.morphologyEx(main_cob_mask, cv2.MORPH_CLOSE, k_close)
-        
-        # Fill any internal holes (sunken missing sockets or interior rot)
-        contours, _ = cv2.findContours(cob_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if contours:
-            for cnt in contours:
-                cv2.drawContours(cob_roi, [cnt], -1, 1, thickness=-1)
-                
-        # Dilate slightly to encompass perimeter kernels
-        cob_roi = cv2.dilate(cob_roi, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)))
-    else:
-        cob_roi = np.ones((h, w), dtype=np.uint8)
+        max_area = stats[largest_lbl, cv2.CC_STAT_AREA]
+        if max_area >= min_seed_px:
+            main_cob_mask = (labels == largest_lbl).astype(np.uint8)
+            
+            # Close gaps within the cob body (connecting healthy kernels and internal diseased rot)
+            k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+            cob_roi = cv2.morphologyEx(main_cob_mask, cv2.MORPH_CLOSE, k_close)
+            
+            # Fill any internal holes (sunken missing sockets or interior rot)
+            contours, _ = cv2.findContours(cob_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                for cnt in contours:
+                    cv2.drawContours(cob_roi, [cnt], -1, 1, thickness=-1)
+                    
+            # Dilate slightly to encompass perimeter kernels
+            cob_roi = cv2.dilate(cob_roi, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)))
 
     inside = (cob_roi == 1)
+    tot_inside = np.sum(inside)
+
+    # If no valid cob body or image is a full textured non-corn rectangle
+    if tot_inside < min_seed_px or (tot_inside > 0.94 * (h * w) and not has_kernel_presence):
+        return np.zeros((h, w), dtype=np.uint8), "No Corn Detected"
 
     # 5. Grain Variety Determination
     v_lower = corn_variety.lower()
@@ -236,6 +247,9 @@ def clean_prediction_mask(img_rgb: np.ndarray,
     fg_m = (clean_mask > 0).astype(np.uint8)
     fg_clean = cv2.morphologyEx(fg_m, cv2.MORPH_OPEN, k_small)
     clean_mask[fg_clean == 0] = 0
+
+    if np.sum(clean_mask > 0) < min_kernel_px:
+        return np.zeros((h, w), dtype=np.uint8), "No Corn Detected"
 
     return clean_mask, detected_variety
 
