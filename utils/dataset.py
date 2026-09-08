@@ -112,7 +112,13 @@ def get_data_loaders(
                 
     return train_loader, val_loader, test_loader
 
-def generate_overlay(image_rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5, black_background: bool = False) -> np.ndarray:
+def generate_overlay(
+    image_rgb: np.ndarray,
+    mask: np.ndarray,
+    alpha: float = 0.55,
+    black_background: bool = False,
+    background_style: str = "light"
+) -> np.ndarray:
     """
     Generates a color overlay of the segmentation mask.
     
@@ -120,7 +126,11 @@ def generate_overlay(image_rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5
         image_rgb (np.ndarray): Original image in RGB format, shape (H, W, 3).
         mask (np.ndarray): Segmentation mask, shape (H, W), values 0 to num_classes-1.
         alpha (float): Transparency parameter for blending.
-        black_background (bool): If True, background outside the cob is solid black (0, 0, 0).
+        black_background (bool): Deprecated compatibility flag. If True, maps to background_style='black'.
+        background_style (str): 'light' (clean soft slate/off-white (244, 246, 248)),
+                                'soft_blend' (translucent light photo wash, non-opaque),
+                                'photo' (full original photo background),
+                                'black' (solid dark/black).
         
     Returns:
         np.ndarray: Blended RGB image.
@@ -132,14 +142,29 @@ def generate_overlay(image_rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5
         color_mask[mask == class_idx] = color
         
     non_bg = (mask > 0)
-    if black_background:
+    
+    # Resolve style
+    style = background_style.lower() if background_style else "light"
+    if black_background and style not in ["light", "soft_blend"]:
+        style = "black"
+
+    # Base background setup
+    if style == "light":
+        # Clean Studio Light Neutral (soft slate / ivory grey #F4F6F8)
+        overlay = np.full_like(image_rgb, (244, 246, 248), dtype=np.uint8)
+    elif style == "soft_blend":
+        # Translucent light veil over photo (subtly visible photo context, non-opaque)
+        overlay = cv2.addWeighted(image_rgb, 0.22, np.full_like(image_rgb, 245), 0.78, 0)
+    elif style == "black":
+        # Solid dark mode
         overlay = np.zeros_like(image_rgb)
-        if np.any(non_bg):
-            blended = cv2.addWeighted(image_rgb, 1.0 - alpha, color_mask, alpha, 0)
-            overlay[non_bg] = blended[non_bg]
-    else:
+    else:  # 'photo'
+        # Full photo context
         overlay = image_rgb.copy()
-        if np.any(non_bg):
-            blended = cv2.addWeighted(image_rgb, 1.0 - alpha, color_mask, alpha, 0)
-            overlay[non_bg] = blended[non_bg]
+        
+    if np.any(non_bg):
+        blended = cv2.addWeighted(image_rgb, 1.0 - alpha, color_mask, alpha, 0)
+        overlay[non_bg] = blended[non_bg]
+        
     return overlay
+

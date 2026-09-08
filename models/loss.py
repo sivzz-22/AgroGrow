@@ -64,20 +64,18 @@ class HybridLoss(nn.Module):
         self.wce_weight = wce_weight
         self.dice_weight = dice_weight
         
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
         if class_weights is not None:
-            weights_tensor = torch.tensor(class_weights, dtype=torch.float32, device=device)
+            self.register_buffer("weights_tensor", torch.tensor(class_weights, dtype=torch.float32))
         else:
-            weights_tensor = None
+            self.weights_tensor = None
             
-        self.wce = nn.CrossEntropyLoss(weight=weights_tensor)
-        self.dice = DiceLoss(class_weights=weights_tensor)
+        self.dice = DiceLoss(class_weights=self.weights_tensor)
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         loss = 0.0
         if self.wce_weight > 0:
-            loss += self.wce_weight * self.wce(logits, targets)
+            weight = self.weights_tensor.to(logits.device) if self.weights_tensor is not None else None
+            loss += self.wce_weight * F.cross_entropy(logits, targets, weight=weight)
         if self.dice_weight > 0:
             loss += self.dice_weight * self.dice(logits, targets)
         return loss

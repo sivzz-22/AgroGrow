@@ -110,6 +110,71 @@ def test_quality_grading():
     assert grading_d["grade"] == "Grade D", f"Expected Grade D, got {grading_d['grade']}"
     print("[SUCCESS] test_quality_grading passed!")
 
+def test_storage_prediction():
+    """Validates the shelf life regressor inference pipeline."""
+    print("[RUNNING] test_storage_prediction...")
+    predictor = StoragePredictor()
+    pred_days, risk_level, rec = predictor.predict(
+        healthy_pct=85.0,
+        disease_pct=5.0,
+        missing_pct=10.0,
+        defect_area=1500.0,
+        corn_area=10000.0,
+        temperature=25.0,
+        humidity=70.0,
+        storage_type="Open Air"
+    )
+    assert pred_days > 0, f"Expected positive shelf life days, got {pred_days}"
+    assert risk_level in ["Low Risk", "Medium Risk", "High Risk"], f"Invalid risk level: {risk_level}"
+    assert len(rec) > 10, "Recommendation string too short"
+    print(f"[SUCCESS] test_storage_prediction passed! (Predicted {pred_days:.1f} days, {risk_level})")
+
+def test_overlay_generation():
+    """Validates light studio background and translucent overlay generation."""
+    print("[RUNNING] test_overlay_generation...")
+    from AgroGrow.utils.dataset import generate_overlay
+    dummy_img = np.ones((100, 100, 3), dtype=np.uint8) * 128
+    dummy_mask = np.zeros((100, 100), dtype=np.uint8)
+    dummy_mask[20:80, 20:80] = 1  # Cob region
+
+    # Test Light Studio Background
+    ov_light = generate_overlay(dummy_img, dummy_mask, background_style="light")
+    assert ov_light.shape == dummy_img.shape, "Shape mismatch in light overlay"
+    # Background pixels outside cob (e.g. at 0, 0) should be light neutral (244, 246, 248)
+    assert np.all(ov_light[0, 0] == [244, 246, 248]), f"Expected light background (244, 246, 248), got {ov_light[0, 0]}"
+
+    # Test Soft Translucent Blend
+    ov_soft = generate_overlay(dummy_img, dummy_mask, background_style="soft_blend")
+    assert ov_soft.shape == dummy_img.shape, "Shape mismatch in soft overlay"
+
+    # Test Full Photo Blend
+    ov_photo = generate_overlay(dummy_img, dummy_mask, background_style="photo")
+    assert ov_photo.shape == dummy_img.shape, "Shape mismatch in photo overlay"
+    print("[SUCCESS] test_overlay_generation passed!")
+
+def test_clean_prediction_mask():
+    """Validates that disease pixels and cob isolation function accurately."""
+    print("[RUNNING] test_clean_prediction_mask...")
+    from AgroGrow.prediction.predictor import clean_prediction_mask
+    dummy_img = np.ones((120, 120, 3), dtype=np.uint8) * 180
+    # Simulate golden yellow kernels in center
+    dummy_img[30:90, 30:90] = [210, 160, 40]
+    
+    raw_mask = np.zeros((120, 120), dtype=np.uint8)
+    raw_mask[30:60, 30:90] = 1  # Healthy
+    raw_mask[60:90, 30:90] = 3  # Diseased fungal rot
+    
+    probs = np.zeros((4, 120, 120), dtype=np.float32)
+    probs[0] = 0.1
+    probs[1, 30:60, 30:90] = 0.85
+    probs[3, 60:90, 30:90] = 0.85
+
+    clean_mask, variety = clean_prediction_mask(dummy_img, raw_mask, probs=probs, corn_variety="auto")
+    assert np.any(clean_mask == 3), "Diseased pixels were erroneously suppressed!"
+    assert np.any(clean_mask == 1), "Healthy pixels missing from clean mask!"
+    assert "Dent" in variety or "Flint" in variety, f"Invalid variety string: {variety}"
+    print(f"[SUCCESS] test_clean_prediction_mask passed! (Variety: {variety})")
+
 def main():
     print("="*50)
     print(" RUNNING AGROGROW SKELETON UNIT TESTS")
@@ -119,6 +184,9 @@ def main():
         test_loss_functions()
         test_metrics_evaluation()
         test_quality_grading()
+        test_storage_prediction()
+        test_overlay_generation()
+        test_clean_prediction_mask()
         print("="*50)
         print(" ALL UNIT TESTS PASSED SUCCESSFULLY!")
         print("="*50)
@@ -132,3 +200,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

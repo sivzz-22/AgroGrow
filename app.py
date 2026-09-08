@@ -123,11 +123,31 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎨 Display Theme")
 overlay_style = st.sidebar.radio(
     "Overlay Background",
-    options=["🌑 Black Background (Cob Only — Zero Bleed)", "🖼️ Semi-Transparent Photo Blend"],
+    options=[
+        "🌫️ Studio Light Neutral (Clean & Modern)",
+        "🌤️ Soft Light Translucent Blend (Non-Opaque)",
+        "🖼️ Semi-Transparent Photo Blend",
+        "🌑 Dark Slate / Black"
+    ],
     index=0,
-    help="Black Background completely blacks out outdoor foliage, husks, and mud for a clean, zero-bleed presentation."
+    help="Studio Light Neutral replaces harsh black with a clean studio backdrop. Soft Light provides a gentle translucent wash."
 )
-use_black_bg = ("Black" in overlay_style)
+if "Studio Light" in overlay_style:
+    bg_style_choice = "light"
+    bg_legend_desc = "Background outside cob (Studio Light Slate)"
+    bg_legend_color = "#E2E8F0"
+elif "Soft Light" in overlay_style:
+    bg_style_choice = "soft_blend"
+    bg_legend_desc = "Background outside cob (Translucent Light Veil)"
+    bg_legend_color = "#CBD5E1"
+elif "Photo Blend" in overlay_style:
+    bg_style_choice = "photo"
+    bg_legend_desc = "Background outside cob (Natural Photo Context)"
+    bg_legend_color = "#94A3B8"
+else:
+    bg_style_choice = "black"
+    bg_legend_desc = "Background outside cob (Dark Slate / Black)"
+    bg_legend_color = "#1E293B"
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📂 Model Configurations")
@@ -258,7 +278,7 @@ if uploaded_file is not None:
                 # 1. Segmentation (uses cropped or full image prepared by user)
                 predictor = CornPredictor(device=use_device)
                 mask, overlay, _, confidence = predictor.predict_single(
-                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input, black_background=use_black_bg
+                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input, background_style=bg_style_choice
                 )
 
                 
@@ -349,17 +369,17 @@ if uploaded_file is not None:
             st.image(str(res["overlay_path"]), width='stretch',
                      caption="Segmentation overlay — model output")
         with ov_col2:
-            st.markdown("""
-                <div style='padding:20px; background:#F8FAFC; border-radius:12px;'>
-                <h4 style='color:#1A365D;'>Colour Legend</h4>
+            st.markdown(f"""
+                <div style='padding:20px; background:#F8FAFC; border-radius:12px; border:1px solid #E2E8F0;'>
+                <h4 style='color:#1A365D; margin-top:0;'>Colour Legend</h4>
                 <p><span style='color:#00BB00; font-size:22px; font-weight:bold;'>■</span>
                    &nbsp;<b>Healthy Kernels (Green)</b></p>
                 <p><span style='color:#0066FF; font-size:22px; font-weight:bold;'>■</span>
                    &nbsp;<b>Missing Kernel Sockets (Blue)</b></p>
                 <p><span style='color:#FF0000; font-size:22px; font-weight:bold;'>■</span>
                    &nbsp;<b>Diseased / Rotten Kernels (Red)</b></p>
-                <p><span style='color:#1A1A1A; font-size:22px; font-weight:bold;'>■</span>
-                   &nbsp;<b>Background outside cob (Black)</b></p>
+                <p><span style='color:{bg_legend_color}; font-size:22px; font-weight:bold; text-shadow: 0 0 1px #94A3B8;'>■</span>
+                   &nbsp;<b>{bg_legend_desc}</b></p>
                 </div>
             """, unsafe_allow_html=True)
 

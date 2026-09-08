@@ -94,18 +94,20 @@ def auto_crop_corn_ear(img_rgb: np.ndarray,
 def clean_prediction_mask(img_rgb: np.ndarray,
                           raw_mask: np.ndarray,
                           probs: Optional[np.ndarray] = None,
-                          fg_conf_threshold: float = 0.35,
+                          fg_conf_threshold: float = 0.30,
                           corn_variety: str = "auto") -> Tuple[np.ndarray, str]:
     """
     Precision post-processing:
       1. Spatial Cob Region-of-Interest (ROI) Extraction:
-         Combines 2D kernel lattice texture energy with multi-variety color cues.
-         Strictly sets all background pixels outside the cob to Class 0 (Background / Black).
-      2. Rejection of sunlit field leaves, dried straw husks, shadows, and mud.
-      3. Corn Variety Identification & Healthy Pigmented Kernel Mapping:
-         Detects Indian / Multi-colored Flint Corn (Zea mays indurata).
-         In Flint varieties, naturally ruby-red, burgundy, bronze, and purple kernels
-         are classified as Class 1 (Healthy Grain, Green), NOT diseased/defective!
+         Combines 2D kernel lattice texture energy with multi-variety color cues and model logits.
+         Isolates the central dominant corn ear body (including healthy grains, missing sockets,
+         and fungal rot), strictly suppressing outdoor leaves, husks, and mud to Class 0.
+      2. Accurate Disease Detection:
+         Ensures dark fungal rot, charcoal ear rot, corn smut, and mold are preserved as Class 3
+         (Diseased), never erroneously suppressed as mud or misclassified as flint corn.
+      3. Corn Variety Identification:
+         Detects genuine Indian / Multi-colored Flint Corn (Zea mays indurata) through
+         true anthocyanin ruby and purple spectral bands without false-triggering on ripe golden dent corn.
       4. Morphological speck removal.
     """
     h, w = raw_mask.shape
@@ -118,74 +120,118 @@ def clean_prediction_mask(img_rgb: np.ndarray,
     G = img_rgb[:, :, 1].astype(float)
     B = img_rgb[:, :, 2].astype(float)
 
-    # 1. Texture Energy
+    # 1. Texture Energy (Sobel cross-gradient energy)
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
     gx = np.abs(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3))
     gy = np.abs(cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3))
-    energy = cv2.blur(gx * gy, (21, 21))
-    norm_e = energy / (np.max(energy) + 1e-6)
+    energy = cv2.blur(gx * gy, (15, 15))
+    max_e = float(np.max(energy))
+    if max_e < 1e-4:
+        norm_e = np.ones((h, w), dtype=np.float32)
+    else:
+        norm_e = energy / (max_e + 1e-6)
 
-    # 2. Multi-Variety Corn Color Cues
+    # Resize probs to matching (H, W) if needed
+    if probs is not None and probs.shape[1:] != (h, w):
+        probs_resized = np.zeros((probs.shape[0], h, w), dtype=np.float32)
+        for c in range(probs.shape[0]):
+            probs_resized[c] = cv2.resize(probs[c], (w, h))
+        probs = probs_resized
+
+    # Confirmed disease signal from model
+    if probs is not None and probs.shape[0] >= 4:
+        is_dis_cue = (probs[3] >= 0.25) | ((raw_mask == 3) & (probs[3] >= probs[1]))
+    else:
+        is_dis_cue = (raw_mask == 3)
+
+    # 2. Kernel and Ear Cues
+    # Healthy yellow kernels (Hue 10-35, rich saturation, distinct warm tone)
     m_yellow = (hsv[:, :, 0] >= 10) & (hsv[:, :, 0] <= 35) & (hsv[:, :, 1] >= 65) & (hsv[:, :, 2] >= 50) & (R > B * 1.35)
     m_white  = (lab[:, :, 0] > 145) & (hsv[:, :, 1] < 50) & (hsv[:, :, 2] > 135)
-    m_ruby   = ((hsv[:, :, 0] <= 15) | (hsv[:, :, 0] >= 165)) & (hsv[:, :, 1] >= 45) & (hsv[:, :, 2] >= 30)
-    m_bronze = (hsv[:, :, 0] <= 30) & (hsv[:, :, 1] >= 45) & (hsv[:, :, 2] >= 28) & (hsv[:, :, 2] <= 135) & (R > B * 1.2)
-    m_purple = (hsv[:, :, 0] >= 120) & (hsv[:, :, 0] <= 165) & (hsv[:, :, 1] >= 40)
-    corn_cues = (m_yellow | m_white | m_ruby | m_bronze | m_purple)
+    
+    # True Anthocyanin pigmentation in Flint corn (distinct from yellow-orange dent corn):
+    # Ruby red (Hue 0-5 or 172-180, high saturation, never dark necrotic decay)
+    m_ruby   = ((hsv[:, :, 0] <= 5) | (hsv[:, :, 0] >= 172)) & (hsv[:, :, 1] >= 85) & (hsv[:, :, 2] >= 35) & (~is_dis_cue)
+    # Deep purple/violet anthocyanin
+    m_purple = (hsv[:, :, 0] >= 120) & (hsv[:, :, 0] <= 165) & (hsv[:, :, 1] >= 55) & (hsv[:, :, 2] >= 30) & (~is_dis_cue)
+    # Bronze/amber grain (textured, saturated)
+    m_bronze = (hsv[:, :, 0] <= 28) & (hsv[:, :, 1] >= 75) & (hsv[:, :, 2] >= 40) & (R > B * 1.35) & (~is_dis_cue)
+    
+    corn_kernel_cues = (m_yellow | m_white | m_ruby | m_purple | m_bronze)
 
-    # 3. Outdoor Foliage / Dried Husk / Mud / Sky Rejection
+    # 3. Outdoor Foliage / Husk / Mud Rejection (NEVER reject confirmed diseased pixels!)
     rej_green = ((hsv[:, :, 0] >= 30) & (hsv[:, :, 0] <= 90) & (G >= R * 0.90)) | ((hsv[:, :, 0] >= 36) & (hsv[:, :, 0] <= 85) & (hsv[:, :, 1] >= 30))
-    rej_husk  = (R - B < 65) & (hsv[:, :, 1] < 95) & (hsv[:, :, 2] > 75) & (G > B * 1.05)
-    rej_mud   = (hsv[:, :, 2] < 28) | ((R < 60) & (G < 60) & (B < 60) & (norm_e < 0.15))
+    rej_husk  = ((R - B < 65) & (hsv[:, :, 1] < 95) & (hsv[:, :, 2] > 75) & (G > B * 1.05)) & (~is_dis_cue)
+    rej_mud   = (((hsv[:, :, 2] < 28) | ((R < 60) & (G < 60) & (B < 60) & (norm_e < 0.12)))) & (~is_dis_cue)
     rej_sky   = (hsv[:, :, 0] >= 90) & (hsv[:, :, 0] <= 135) & (hsv[:, :, 1] >= 25)
 
-    # 4. Cob Region-of-Interest (ROI) Isolation
-    cob_core = corn_cues & (~rej_green) & (~rej_husk) & (~rej_mud) & (~rej_sky) & (norm_e > 0.08)
-    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-    cob_closed = cv2.morphologyEx(cob_core.astype(np.uint8), cv2.MORPH_CLOSE, k)
+    # 4. Cob Region-of-Interest (ROI) Extraction
+    # Core seeds combine textured corn kernels with confirmed diseased detections
+    cob_seeds = ((corn_kernel_cues & (norm_e > 0.06)) | is_dis_cue) & \
+                (~rej_green) & (~rej_husk) & (~rej_mud) & (~rej_sky)
 
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(cob_seeds.astype(np.uint8), connectivity=8)
     cob_roi = np.zeros((h, w), dtype=np.uint8)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(cob_closed, connectivity=8)
+
     if num_labels > 1:
-        max_area = np.max(stats[1:, cv2.CC_STAT_AREA])
-        for lbl in range(1, num_labels):
-            if stats[lbl, cv2.CC_STAT_AREA] >= 0.08 * max_area and stats[lbl, cv2.CC_STAT_AREA] >= 250:
-                cob_roi[labels == lbl] = 1
-        k_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        cob_roi = cv2.dilate(cob_roi, k_dilate)
+        largest_lbl = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+        main_cob_mask = (labels == largest_lbl).astype(np.uint8)
+        
+        # Close gaps within the cob body (connecting healthy kernels and internal diseased rot)
+        k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
+        cob_roi = cv2.morphologyEx(main_cob_mask, cv2.MORPH_CLOSE, k_close)
+        
+        # Fill any internal holes (sunken missing sockets or interior rot)
+        contours, _ = cv2.findContours(cob_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            for cnt in contours:
+                cv2.drawContours(cob_roi, [cnt], -1, 1, thickness=-1)
+                
+        # Dilate slightly to encompass perimeter kernels
+        cob_roi = cv2.dilate(cob_roi, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)))
     else:
         cob_roi = np.ones((h, w), dtype=np.uint8)
 
-    # Restrict raw mask to cob ROI and suppress background noise
-    clean_mask = raw_mask.copy()
-    clean_mask[cob_roi == 0] = 0
-    clean_mask[rej_green | rej_husk | rej_mud | rej_sky] = 0
+    inside = (cob_roi == 1)
 
-    # Softmax confidence filtering
-    if probs is not None and probs.shape[0] >= 4:
-        bg_prob = probs[0]
-        fg_max_prob = np.max(probs[1:4], axis=0)
-        weak_fg = (fg_max_prob < fg_conf_threshold) | (bg_prob >= fg_max_prob * 0.95)
-        clean_mask[weak_fg] = 0
-
-    # 5. Grain Variety Determination & Mapping
-    is_pigmented = (m_ruby | m_bronze | m_purple)
-    pigmented_px = np.sum(is_pigmented & (cob_roi == 1))
-    total_cob_px = np.sum(corn_cues & (cob_roi == 1))
-    p_ratio = pigmented_px / max(1, total_cob_px)
-
+    # 5. Grain Variety Determination
     v_lower = corn_variety.lower()
+    anthocyanin_px = np.sum((m_ruby | m_purple) & inside)
+    kernel_px = np.sum((m_yellow | m_ruby | m_purple | m_bronze) & inside)
+    p_ratio = anthocyanin_px / max(1, kernel_px)
+    
     is_flint_active = ("flint" in v_lower) or ("indian" in v_lower) or ("pigment" in v_lower) or \
-                      ("auto" in v_lower and p_ratio >= 0.15)
+                      ("auto" in v_lower and p_ratio >= 0.08)
 
     detected_variety = "Indian / Multi-Colored Flint Corn (Zea mays indurata)" if is_flint_active else "Commercial Dent Corn (Yellow/White)"
 
-    if is_flint_active:
-        # In Indian / Flint corn, naturally ruby-red, bronze, and purple kernels are HEALTHY grain, NOT defect!
-        flint_kernel_mask = is_pigmented & (cob_roi == 1) & (norm_e > 0.08)
-        clean_mask[flint_kernel_mask] = 1
+    # 6. Final Pixel Classification within Cob ROI
+    clean_mask = np.zeros((h, w), dtype=np.uint8)
 
-    # 6. Morphological cleanup of stray noise specks
+    # Class 3: Diseased / Rotten Kernels
+    if probs is not None and probs.shape[0] >= 4:
+        m_dis = inside & ((probs[3] >= 0.28) | ((raw_mask == 3) & (probs[3] >= probs[1])))
+    else:
+        m_dis = inside & (raw_mask == 3)
+
+    # Class 1: Healthy Kernels
+    m_hlth = inside & (~m_dis) & ((raw_mask == 1) | m_yellow) & (~rej_green)
+    if is_flint_active:
+        # Genuine pigmented kernels in Flint varieties are classified as healthy grain, not disease
+        flint_healthy = inside & (~m_dis) & (m_ruby | m_purple | m_bronze)
+        m_hlth = m_hlth | flint_healthy
+
+    # Class 2: Missing Kernel Sockets
+    if probs is not None and probs.shape[0] >= 4:
+        m_miss = inside & (~m_dis) & (~m_hlth) & ((probs[2] >= 0.25) | (raw_mask == 2))
+    else:
+        m_miss = inside & (~m_dis) & (~m_hlth) & (raw_mask == 2)
+
+    clean_mask[m_hlth] = 1
+    clean_mask[m_miss] = 2
+    clean_mask[m_dis] = 3
+
+    # Remove stray microscopic specks
     k_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     fg_m = (clean_mask > 0).astype(np.uint8)
     fg_clean = cv2.morphologyEx(fg_m, cv2.MORPH_OPEN, k_small)
@@ -237,7 +283,8 @@ class CornPredictor:
                        img_path: Union[str, Path],
                        auto_crop: bool = True,
                        corn_variety: str = "auto",
-                       black_background: bool = True
+                       black_background: bool = False,
+                       background_style: str = "light"
                        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
         Full pipeline:
@@ -245,7 +292,7 @@ class CornPredictor:
           2. Auto-crop to corn ear if requested (strips outdoor background)
           3. Run CornNet inference (with transparent CPU fallback if CUDA has issues)
           4. Post-processing to suppress background bleed and handle corn varieties
-          5. Generate colour overlay (Green=Healthy, Blue=Missing, Red=Diseased, Black=Background)
+          5. Generate colour overlay (Green=Healthy, Blue=Missing, Red=Diseased, background styled)
           6. Return mask, overlay, prob_map, confidence
         """
         img_path = Path(img_path)
@@ -287,8 +334,10 @@ class CornPredictor:
         mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
         self.last_detected_variety = variety_name
 
-        # ── Build overlay with high-contrast black background (Zero Bleed) 
-        overlay     = generate_overlay(img_display, mask, black_background=black_background)
+        # ── Build overlay with chosen background style (Light Studio Neutral default)
+        if black_background and background_style not in ["light", "soft_blend"]:
+            background_style = "black"
+        overlay = generate_overlay(img_display, mask, background_style=background_style)
 
         # ── Confidence ───────────────────────────────────────────────────
         corn_px = (mask > 0)
