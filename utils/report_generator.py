@@ -8,7 +8,7 @@ from pathlib import Path
 import datetime
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
@@ -26,7 +26,6 @@ class PDFReportGenerator:
         features: dict,
         grading: dict,
         storage: dict,
-        assistant_text: str,
         output_pdf_path: Path
     ) -> Path:
         """
@@ -38,7 +37,6 @@ class PDFReportGenerator:
             features (dict): Dictionary of extracted features.
             grading (dict): Dictionary of grading classification results.
             storage (dict): Dictionary of storage shelf-life results.
-            assistant_text (str): Explanatory summary text from AI Assistant.
             output_pdf_path (Path): Path where PDF should be saved.
             
         Returns:
@@ -228,17 +226,6 @@ class PDFReportGenerator:
         ]))
         story.append(rec_box)
         story.append(Spacer(1, 10))
-        
-        # Section 5: AI assistant explanation
-        story.append(Paragraph("Agronomist AI Assistant Summary", section_style))
-        assistant_box_data = [[Paragraph(f"{assistant_text}", callout_style)]]
-        assistant_box = Table(assistant_box_data, colWidths=[7.5*inch])
-        assistant_box.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#EBF8FF")), # Blue tint
-            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor("#BEE3F8")),
-            ('PADDING', (0, 0), (-1, -1), 8),
-        ]))
-        story.append(KeepTogether([assistant_box]))
         
         # Build Document
         doc.build(story)

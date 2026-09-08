@@ -1,7 +1,7 @@
 """
 AgroGrow Prediction CLI Entrypoint.
 Runs the complete post-harvest quality assessment pipeline on an image or folder,
-grades it, predicts storage life, calls the AI assistant, and generates a PDF report.
+grades it, predicts storage life, and generates a PDF report.
 """
 
 import argparse
@@ -17,15 +17,13 @@ from AgroGrow.prediction.predictor import CornPredictor
 from AgroGrow.prediction.feature_extractor import CornFeatureExtractor
 from AgroGrow.prediction.grader import CornGrader
 from AgroGrow.storage_prediction.model import StoragePredictor
-from AgroGrow.assistant.agent import CornAssistant
 from AgroGrow.utils.report_generator import PDFReportGenerator
 
 def run_pipeline(
     image_path: Path,
     temperature: float = 25.0,
     humidity: float = 70.0,
-    storage_type: str = "Open Air",
-    assistant_query: str = "Is this batch suitable for export?"
+    storage_type: str = "Open Air"
 ) -> dict:
     """
     Executes the full assessment pipeline for a single image.
@@ -79,16 +77,7 @@ def run_pipeline(
         "storage_type": storage_type
     }
     
-    # 5. AI Assistant Context Compilation & Query
-    assistant = CornAssistant()
-    context = {
-        **features,
-        **grading,
-        **storage_results
-    }
-    assistant_reply = assistant.answer_query(assistant_query, context)
-    
-    # 6. Report Generation
+    # 5. Report Generation
     pdf_path = global_config.reports_dir / f"{image_path.stem}_quality_report.pdf"
     PDFReportGenerator.generate(
         image_path=image_path,
@@ -96,7 +85,6 @@ def run_pipeline(
         features=features,
         grading=grading,
         storage=storage_results,
-        assistant_text=assistant_reply,
         output_pdf_path=pdf_path
     )
     
@@ -105,8 +93,7 @@ def run_pipeline(
         "overlay_image": overlay_path,
         "features": features,
         "grading": grading,
-        "storage": storage_results,
-        "assistant_reply": assistant_reply
+        "storage": storage_results
     }
 
 def main():
