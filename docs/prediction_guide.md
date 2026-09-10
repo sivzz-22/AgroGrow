@@ -16,24 +16,24 @@ The `predict.py` script provides arguments to customize environmental variables 
 
 ## Example Commands
 
-### 1. Test Premium Batch
-Evaluate a corn cob using regulated storage settings:
+### 1. Test Regulated Storage Batch
+Evaluate a corn cob using cold storage settings:
 ```bash
-python AgroGrow/predict.py --image "AgroGrow/dataset/images/test/0NSA9HSJ4NTE.jpg" --temp 8.0 --humidity 55.0 --storage "Cold Storage"
+python predict.py --image "DataSet/data/test/corn/00GGXQ76763Y.jpg" --temp 8.0 --humidity 55.0 --storage "Cold Storage"
 ```
 
 ### 2. Custom AI Assistant Query
-Inquire about classification details:
+Inquire about variety and storage recommendations:
 ```bash
-python AgroGrow/predict.py --image "AgroGrow/dataset/images/test/0NSA9HSJ4NTE.jpg" --temp 32.0 --humidity 85.0 --storage "Open Air" --query "Why is this corn Grade B?"
+python predict.py --image "DataSet/data/test/corn/00GGXQ76763Y.jpg" --temp 12.0 --humidity 60.0 --storage "Cold Storage" --query "What variety is this and is it suitable for long-term storage?"
 ```
 
 ---
 
-## Output Files Created
+## Output Generated
 
-Running the CLI script automatically generates several output artifacts:
+Running the CLI script automatically produces:
 
-1. **Terminal stdout**: Prints a clean structured summary card containing quality score, classification grade, predicted shelf life (days), risk status, and the AI assistant's text response.
-2. **Visual Segmentation Overlay**: Saves a colored visualization overlay at `AgroGrow/results/{filename}_overlay.png` where colors indicate healthy (green), missing (red), and diseased (blue) kernels.
-3. **Quality Assessment PDF Report**: Standard ReportLab report including the metadata, original vs segment side-by-side images, crop metrics table, storage projections, and the AI agronomist's written summary. Saved at `AgroGrow/reports/{filename}_quality_report.pdf`.
+1. **Terminal Summary Card**: Prints quality grade (A, B, C, D), confidence score, detected corn variety (powered by the MobileNetV3 CNN classifier), healthy/diseased/missing percentages, predicted shelf life (days), storage risk category, and the AI assistant's tailored answer.
+2. **Visual Segmentation Overlay**: Saves a blended visualization overlay at `AgroGrow/results/{filename}_overlay.png` highlighting healthy kernels (green), missing sockets (blue), and diseased kernels (red).
+3. **Quality Assessment PDF Report**: Generates a PDF report at `AgroGrow/reports/{filename}_quality_report.pdf` containing side-by-side images, metrics table, storage projections, and agronomist recommendations.

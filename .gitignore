@@ -22,6 +22,8 @@ weights/
 AgroGrow/dataset/
 dataset/
 DataSet/
+variety_data/raw/
+variety_data/splits/
 
 # Logs and Results
 AgroGrow/results/

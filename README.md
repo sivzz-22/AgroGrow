@@ -1,6 +1,20 @@
 # AgroGrow — AI-Driven Smart Post-Harvest Corn Quality Assessment and Storage Prediction System
 
-AgroGrow is an end-to-end, modular post-harvest decision-support system built for corn classification, grading, and storage shelf-life prediction. It employs a custom deep learning semantic segmentation model (**Corn-Net**), physical simulation environmental modeling for shelf life, an expert AI assistant, and an interactive Streamlit dashboard.
+AgroGrow is an end-to-end, modular post-harvest decision-support system built for corn classification, grading, and storage shelf-life prediction. It employs a custom deep learning semantic segmentation model (**CornNet**), a fine-tuned **MobileNetV3** corn variety classifier, XGBoost shelf-life regression, a **Gemini AI-powered chatbot**, and an interactive Streamlit dashboard.
+
+---
+
+## 🌟 Key Features
+
+| Feature | Description |
+|---|---|
+| 🔬 **Semantic Segmentation** | CornNet classifies every pixel into Healthy / Missing / Diseased / Background |
+| 🌈 **5-Variety Detection** | MobileNetV3 CNN identifies Dent, Flint, Sweet, Popcorn, Blue/Black corn |
+| 📊 **USDA/ISO Grading** | Automatic Grade A/B/C/D classification with detailed summary |
+| 📦 **Shelf-Life Forecast** | XGBoost regressor predicts shelf life under Open Air / Cold Storage / Hermetic Bag |
+| 🏥 **Health Status Banner** | Instant visual notification — Healthy / Warning / Severe / No Corn Detected |
+| 💬 **CornBot AI Chatbot** | Gemini-powered (or rule-based) chatbot floating at bottom-right |
+| 📄 **PDF Report Export** | One-click branded quality assessment reports |
 
 ---
 
@@ -8,7 +22,7 @@ AgroGrow is an end-to-end, modular post-harvest decision-support system built fo
 
 ```mermaid
 graph TD
-    A[Raw Image] --> B[Corn-Net Segmenter]
+    A[Raw Image] --> B[CornNet Segmenter]
     B --> C[Class-wise Softmax Probabilities]
     C --> D[Predictor: Segmentation Mask]
     D --> E[Feature Extractor]
@@ -16,9 +30,11 @@ graph TD
     E -->|Healthy, Disease, Missing, Area| G[Quality Grader]
     E -->|Extracted Agronomic Features| H[Storage Predictor]
     I[User Environment Inputs] --> H
-    G -->|Grade A/B/C/D| J[AI Assistant]
+    A --> V[MobileNetV3 Variety Classifier]
+    V -->|Dent/Flint/Sweet/Popcorn/Blue| G
+    G -->|Grade A/B/C/D| J[CornBot Chatbot]
     H -->|Shelf Life & Risk| J
-    J -->|Natural Explanations| K[Streamlit Dashboard / PDF Reports]
+    J -->|Gemini AI / Rule-Based| K[Streamlit Dashboard / PDF Reports]
     F --> K
 ```
 
@@ -28,130 +44,163 @@ graph TD
 
 ```
 AgroGrow/
-├── dataset/                     # Parsed images & synthesized labels
-│   ├── images/                  # Normalized raw image splits (train/val/test)
-│   └── masks/                   # Binary/multi-class classification labels (PNG)
+├── dataset/                     # Training dataset (1,387 labelled corn images)
+│   ├── images/                  # Normalised image splits (train/val/test)
+│   └── masks/                   # Pixel-level semantic labels (PNG)
+├── variety_data/                # Corn variety classifier pipeline
+│   ├── raw/                     # Downloaded variety images (5 classes × ~150 each)
+│   ├── splits/                  # Train/val split for MobileNet training
+│   ├── build_variety_dataset.py # Scrapes variety images from Bing
+│   ├── train_variety_classifier.py  # MobileNetV3-Small fine-tuning script
+│   └── variety_classifier.py   # Inference wrapper (auto-loaded by predictor)
 ├── models/                      # Deep Learning & Loss abstractions
-│   ├── corn_net.py              # Corn-Net segmentation PyTorch module
+│   ├── corn_net.py              # CornNet segmentation PyTorch module
 │   └── loss.py                  # Dice & Hybrid Loss formulas
 ├── training/                    # Trainer logic
 │   └── trainer.py               # Custom training loop (AMP, checkpointers)
 ├── prediction/                  # Inference, extraction & grading
-│   ├── predictor.py             # Inference wrappers
-│   ├── feature_extractor.py     # Crop metrics math calculations
-│   └── grader.py                # Quality classification boundaries
-├── storage_prediction/          # Machine learning regression models
-│   ├── dataset_generator.py     # Synthesizes degradation database
-│   └── model.py                 # RF & XGBoost training & prediction
-├── assistant/                   # Explanatory interfaces
-│   └── agent.py                 # Rules-based and OpenAI agent wrappers
+│   ├── predictor.py             # Inference wrappers (CNN variety + segmentation)
+│   ├── feature_extractor.py     # Pixel-level agronomic feature extraction
+│   └── grader.py                # USDA/ISO quality grade classification
+├── storage_prediction/          # XGBoost shelf-life regression
+│   ├── dataset_generator.py     # Synthetic degradation database generator
+│   └── model.py                 # XGBoost training & prediction
+├── assistant/                   # AI Chatbot
+│   ├── chatbot.py               # CornBot (Gemini AI + rule-based fallback)
+│   └── agent.py                 # Legacy compatibility redirect
 ├── utils/                       # Shared helpers
 │   ├── logger.py                # Global logging configuration
 │   ├── prepare_dataset.py       # HSV pseudo-mask generator
-│   └── report_generator.py      # ReportLab PDF compiler
-├── reports/                     # Saved PDF quality assessments
-├── results/                     # Metric plots, history records, overlays
-├── weights/                     # Saved .pth (PyTorch) and .pkl (scikit-learn) binaries
-├── tests/                       # Testing module
-│   └── run_tests.py             # Execution unit tests
-├── config.py                    # Centralized settings configuration
-├── train.py                     # DL training launcher
-├── predict.py                   # Prediction CLI launcher
-├── app.py                       # Streamlit dashboard interface launcher
-├── requirements.txt             # Setup dependencies
-└── README.md                    # System documentation
+│   ├── dataset.py               # PyTorch Dataset + overlay generator
+│   ├── metrics.py               # IoU / F1 / Dice evaluation
+│   ├── validation.py            # Validation loop
+│   └── report_generator.py      # PDF report generation (ReportLab)
+├── weights/                     # Trained model weights
+│   ├── best_model.pth           # CornNet segmentation model
+│   ├── best_storage_model.pkl   # XGBoost shelf-life model
+│   └── variety_classifier.pth  # MobileNetV3 variety classifier (after training)
+├── docs/                        # Documentation
+├── reports/                     # Generated PDF reports
+├── tests/                       # Unit test suite
+│   └── run_tests.py             # All 7 unit tests
+├── app.py                       # Streamlit dashboard entry point
+├── train.py                     # CornNet segmentation trainer
+├── config.py                    # Global configuration
+└── requirements.txt             # Python dependencies
 ```
 
 ---
 
-## ⚙️ Installation Guide
+## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.10+
-- CUDA-compatible GPU (optional, but highly recommended for fast training; fallback to CPU is supported automatically)
+### 1. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
 
-### Setup Steps
-1. Navigate to the project root directory:
-   ```bash
-   cd D:/Sem_7/"research paper 1"/AgroGrow
-   ```
+### 2. (Optional) Enable Gemini AI Chatbot
+```bash
+# Get a free API key at https://aistudio.google.com
+export GEMINI_API_KEY=your_key_here       # Linux/Mac
+$env:GEMINI_API_KEY = "your_key_here"    # Windows PowerShell
+```
 
-2. Create a virtual environment and activate it:
-   ```bash
-   python -m venv venv
-   # On Windows (PowerShell)
-   .\venv\Scripts\Activate.ps1
-   # On Linux/macOS
-   source venv/bin/activate
-   ```
+### 3. Run the Dashboard
+```bash
+cd "d:/Sem_7/research paper 1"
+python -m streamlit run AgroGrow/app.py
+# OR from within AgroGrow/:
+..\venv\Scripts\streamlit run app.py
+```
 
-3. Install project dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 4. Access at: http://localhost:8501
 
 ---
 
-## 🌽 Training Guide
+## 🌈 Corn Variety Detection
 
-### 1. Preprocess & Validate Dataset
-The original workspace contains raw images only. To build the segmentation target directories, copy files, and generate HSV-based pseudo-masks, run the data preparation entrypoint. This will automatically execute the Phase 2 dataset validation check and output a validation report:
+AgroGrow detects **5 corn varieties** using a two-tier system:
+
+| Variety | Detection Method | Notes |
+|---|---|---|
+| 🌽 **Dent Corn** | Default / CNN | Most common worldwide |
+| 🎨 **Indian / Flint Corn** | CNN + Ruby/Purple HSV bands | Glass Gem, Bloody Butcher, Calico |
+| 🍬 **Sweet Corn** | CNN + White-ratio LAB | Pale cream/yellow, wrinkled when dried |
+| 🍿 **Popcorn** | CNN + Manual selection | Small hard pearl-white kernels |
+| 🔵 **Blue / Black Corn** | CNN + Dark-blue HSV bands | Hopi Blue, Black Aztec |
+
+**When `variety_classifier.pth` is trained and present**, the system uses **MobileNetV3 deep learning** for all variety detection. Otherwise it falls back to colour-grading automatically.
+
+### Build Variety Dataset & Train Classifier
 ```bash
-python prepare_dataset.py
-```
-*Outputs:*
-- Copy of images resized to 256x256 under `dataset/images/`
-- Custom labels under `dataset/masks/` (0=Background, 1=Healthy, 2=Missing, 3=Diseased)
-- Markdown report at `reports/dataset_validation_report.md`
+# Step 1: Download ~200 images per variety from Bing
+python variety_data/build_variety_dataset.py --images_per_class 200
 
-### 2. Run DL Training (Corn-Net)
-Train the segmentation model. The script automatically sets up data loaders, learning rate schedulers, early stopping, mixed precision training (on CUDA), checkpoints, and outputs metric charts:
-```bash
-python train.py
-```
-*Outputs:*
-- Best validation model saved to `weights/best_model.pth`
-- Regular training checkpoint saved to `weights/checkpoint.pth`
-- Validation curves saved to `results/training_metrics_curves.png`
-
-### 3. Generate Storage Prediction Database & Train Regressors
-Since the raw dataset has no shelf-life records, run the generator script to synthesize environmental storage stability data, then train the Random Forest and XGBoost regressors:
-```bash
-# 1. Synthesize storage training data
-python storage_prediction/dataset_generator.py
-
-# 2. Train and choose best regressor
-python -c "from AgroGrow.storage_prediction.model import train_storage_models; train_storage_models()"
-```
-*Outputs:*
-- Training data file saved to `dataset/storage_data.csv`
-- Best regression model saved to `weights/best_storage_model.pkl`
-- Model comparison chart saved to `results/storage_model_comparison.png`
-
----
-
-## 🔮 Prediction & Inference Guide
-
-### 1. Running CLI Assessments
-Evaluate any raw corn image using the command line interface:
-```bash
-python predict.py --image "dataset/images/test/some_file.jpg" --temp 28.0 --humidity 72.0 --storage "Hermetic Bag" --query "Why is this corn Grade B?"
-```
-*Outputs:*
-- Segmentation overlay saved to `results/{filename}_overlay.png`
-- Detailed metric stats and AI Assistant reply printed in the terminal
-- Report compiled and saved at `reports/{filename}_quality_report.pdf`
-
-### 2. Running the Interactive Streamlit Dashboard
-Launch the dashboard to perform drag-and-drop assessments, view analytics charts, download PDF reports, and chat with the AI assistant:
-```bash
-streamlit run app.py
+# Step 2: Train MobileNetV3-Small (GPU recommended, ~15-20 min)
+python variety_data/train_variety_classifier.py --epochs 25 --batch_size 16
 ```
 
 ---
 
-## 🧪 Testing Suite
-Execute the testing suite to verify system integrity, dimensions, losses, and grading calculations:
+## 🔬 Segmentation Classes
+
+| Class | Colour in Overlay | Meaning |
+|---|---|---|
+| Background | Transparent (no colour) | Non-corn regions |
+| Healthy | 🟢 Green | Fully formed, disease-free kernels |
+| Missing | 🔵 Blue | Empty kernel sockets / kernel loss |
+| Diseased | 🔴 Red | Fungal rot, mould, necrosis |
+
+---
+
+## 📊 Quality Grading (USDA / ISO Aligned)
+
+| Grade | Min Healthy | Max Disease | Max Missing |
+|---|---|---|---|
+| **Grade A** | ≥ 88% | ≤ 4% | ≤ 4% |
+| **Grade B** | ≥ 75% | ≤ 8% | ≤ 10% |
+| **Grade C** | ≥ 55% | ≤ 16% | ≤ 18% |
+| **Grade D** | < 55% | > 16% | > 18% |
+
+---
+
+## 💬 CornBot AI Chatbot
+
+CornBot is a floating chatbot (bottom-right corner of the dashboard). It:
+- Answers questions about **corn varieties, disease, storage, and grading**
+- Has **full context** of the current analysis (grade, disease %, shelf life, variety)
+- Uses **Gemini AI** when `GEMINI_API_KEY` is set (dynamic, LLM-quality answers)
+- Falls back to an **enhanced rule-based system** without a key (still context-aware)
+
+---
+
+## 🧪 Running Tests
 ```bash
 python tests/run_tests.py
+# Expected: ALL 7 UNIT TESTS PASSED SUCCESSFULLY!
 ```
+
+---
+
+## 📦 Storage Prediction
+
+Shelf life is predicted by an **XGBoost regressor** trained on simulated degradation data:
+
+| Storage Type | Typical Shelf Life | Conditions |
+|---|---|---|
+| Open Air | 30–90 days | 20–35°C, 65–80% RH |
+| Hermetic Bag | 180–365 days | Sealed, low oxygen |
+| Cold Storage | 365–1825 days | -20°C to +10°C |
+
+---
+
+## 🗃️ Dataset
+
+- **1,387 labelled corn images** with pixel-level segmentation masks
+- Split: 70% train / 15% val / 15% test
+- Classes: Background (0), Healthy (1), Missing (2), Diseased (3)
+- **716 variety classification images** across 5 classes (Bing-scraped)
+
+---
+
+*AgroGrow — Precision Post-Harvest Intelligence for Corn.*

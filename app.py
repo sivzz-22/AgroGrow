@@ -1,7 +1,7 @@
 """
-AgroGrow Interactive Streamlit Dashboard.
-Provides a clean web interface for upload, segmentation mapping,
-agronomic quality analytics, and shelf-life model predictions.
+AgroGrow Interactive Streamlit Dashboard — Premium Edition.
+Clean, animated UI with health status banner, no-corn detection,
+and a floating Gemini-powered chatbot.
 """
 
 import tempfile
@@ -13,7 +13,6 @@ import cv2
 import pandas as pd
 import torch
 
-# Add project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from AgroGrow.config import global_config
@@ -23,8 +22,9 @@ from AgroGrow.prediction.feature_extractor import CornFeatureExtractor
 from AgroGrow.prediction.grader import CornGrader
 from AgroGrow.storage_prediction.model import StoragePredictor
 from AgroGrow.utils.report_generator import PDFReportGenerator
+from AgroGrow.assistant.chatbot import CornChatbot
 
-# ── Page Configuration ───────────────────────────────────────────────────────
+# ── Page Configuration ────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AgroGrow — Corn Quality Assessment",
     page_icon="🌽",
@@ -34,79 +34,357 @@ st.set_page_config(
 
 # ── Global CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
 
-        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif !important;
+}
 
-        .kpi-card {
-            background: #ffffff;
-            border-radius: 14px;
-            padding: 22px 20px 18px 20px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
-            border-top: 4px solid #2B6CB0;
-            text-align: center;
-            margin-bottom: 4px;
-        }
-        .kpi-label {
-            font-size: 11px; font-weight: 600; letter-spacing: 1px;
-            text-transform: uppercase; color: #94A3B8; margin-bottom: 6px;
-        }
-        .kpi-value {
-            font-size: 30px; font-weight: 700; color: #0F172A;
-            line-height: 1.1; margin-bottom: 6px;
-        }
-        .kpi-sub { font-size: 12px; color: #94A3B8; font-weight: 400; }
+/* ── Animated gradient header ── */
+.ag-header {
+    background: linear-gradient(135deg, #0f4c2a 0%, #1a6b3a 40%, #0d5c3e 70%, #1a4a2a 100%);
+    background-size: 300% 300%;
+    animation: gradientShift 8s ease infinite;
+    border-radius: 20px;
+    padding: 36px 32px 32px 32px;
+    margin-bottom: 28px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.ag-header::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 60%);
+    animation: rotate 15s linear infinite;
+}
+@keyframes gradientShift {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.ag-title {
+    font-size: 40px;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0;
+    letter-spacing: -0.5px;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+.ag-subtitle {
+    color: rgba(255,255,255,0.8);
+    font-size: 15px;
+    margin: 8px 0 0 0;
+    font-weight: 400;
+}
+.ag-pill {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 999px;
+    padding: 4px 16px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.9);
+    font-weight: 600;
+    margin-top: 14px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    backdrop-filter: blur(8px);
+}
 
-        .grade-badge {
-            display: inline-block; padding: 3px 12px; border-radius: 999px;
-            font-size: 12px; font-weight: 600; margin-top: 6px;
-        }
-        .grade-A { background: #DCFCE7; color: #166534; }
-        .grade-B { background: #DBEAFE; color: #1E40AF; }
-        .grade-C { background: #FEF9C3; color: #854D0E; }
-        .grade-D { background: #FEE2E2; color: #991B1B; }
+/* ── Health status banner ── */
+.health-banner {
+    border-radius: 14px;
+    padding: 18px 24px;
+    margin: 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    animation: slideDown 0.4s ease;
+}
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.health-banner-healthy {
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1.5px solid #16a34a;
+    box-shadow: 0 4px 20px rgba(22, 163, 74, 0.12);
+}
+.health-banner-warning {
+    background: linear-gradient(135deg, #fffbeb, #fef9c3);
+    border: 1.5px solid #d97706;
+    box-shadow: 0 4px 20px rgba(217, 119, 6, 0.12);
+}
+.health-banner-danger {
+    background: linear-gradient(135deg, #fff1f2, #fde8e8);
+    border: 1.5px solid #dc2626;
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.12);
+}
+.health-banner-nocorn {
+    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    border: 1.5px solid #64748b;
+    box-shadow: 0 4px 20px rgba(100, 116, 139, 0.1);
+}
+.health-icon { font-size: 40px; flex-shrink: 0; }
+.health-title { font-size: 18px; font-weight: 700; margin: 0; }
+.health-desc  { font-size: 13px; margin: 3px 0 0 0; opacity: 0.8; }
 
-        .section-header {
-            font-size: 16px; font-weight: 600; color: #1E293B;
-            margin: 0 0 12px 0; padding-bottom: 8px;
-            border-bottom: 2px solid #F1F5F9;
-        }
+/* ── Glass KPI cards ── */
+.kpi-card {
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+    padding: 22px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.04);
+    border: 1px solid rgba(255,255,255,0.6);
+    border-top: 4px solid #2B6CB0;
+    text-align: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    animation: fadeUp 0.5s ease both;
+}
+.kpi-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.10), 0 16px 48px rgba(0,0,0,0.06);
+}
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.kpi-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #94A3B8;
+    margin-bottom: 8px;
+}
+.kpi-value {
+    font-size: 32px;
+    font-weight: 800;
+    color: #0F172A;
+    line-height: 1.1;
+    margin-bottom: 6px;
+}
+.kpi-sub { font-size: 12px; color: #94A3B8; }
 
-        .legend-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .legend-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
-        .legend-label { font-size: 13px; color: #334155; font-weight: 500; }
+/* ── Grade badge ── */
+.grade-badge {
+    display: inline-block;
+    padding: 3px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 6px;
+}
+.grade-A { background:#dcfce7; color:#166534; }
+.grade-B { background:#dbeafe; color:#1e40af; }
+.grade-C { background:#fef9c3; color:#854d0e; }
+.grade-D { background:#fee2e2; color:#991b1b; }
 
-        .variety-banner {
-            background: #F0FDF4; border-left: 4px solid #16A34A;
-            border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;
-            font-size: 13px; color: #166534;
-        }
+/* ── Section header ── */
+.section-hdr {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 14px 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
 
-        .storage-card {
-            background: #F8FAFC; border: 1px solid #E2E8F0;
-            border-radius: 12px; padding: 20px; height: 100%;
-        }
-        .storage-row {
-            display: flex; justify-content: space-between;
-            padding: 7px 0; border-bottom: 1px solid #F1F5F9; font-size: 13px;
-        }
-        .storage-key { color: #64748B; font-weight: 500; }
-        .storage-val { color: #0F172A; font-weight: 600; }
+/* ── Variety chip ── */
+.variety-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #f0fdf4;
+    border: 1.5px solid #16a34a;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #166534;
+    font-weight: 500;
+    margin-bottom: 16px;
+    animation: fadeUp 0.4s ease;
+}
 
-        .rec-box {
-            background: #FFFBEB; border: 1px solid #FDE68A;
-            border-radius: 10px; padding: 14px 16px;
-            font-size: 13px; color: #92400E; line-height: 1.6;
-        }
-    </style>
+/* ── Progress bars ── */
+.pbar-wrap { margin-bottom: 14px; }
+.pbar-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #334155;
+}
+.pbar-track {
+    background: #f1f5f9;
+    border-radius: 999px;
+    height: 9px;
+    overflow: hidden;
+}
+.pbar-fill {
+    height: 9px;
+    border-radius: 999px;
+    transition: width 0.6s ease;
+}
+
+/* ── Storage card ── */
+.st-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 20px;
+}
+.st-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
+}
+.st-key { color: #64748b; font-weight: 500; }
+.st-val { color: #0f172a; font-weight: 600; }
+
+/* ── Recommendation box ── */
+.rec-box {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 13px;
+    color: #92400e;
+    line-height: 1.65;
+}
+
+/* ── Legend card ── */
+.legend-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 22px;
+    height: 100%;
+}
+.legend-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.legend-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+/* ── Empty state ── */
+.empty-state {
+    text-align: center;
+    padding: 72px 40px;
+    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    border-radius: 20px;
+    border: 2px dashed #cbd5e1;
+    margin-top: 20px;
+    animation: fadeUp 0.6s ease;
+}
+
+/* ── Primary Action Button (Run Quality Assessment) ── */
+button[kind="primary"] {
+    background: linear-gradient(135deg, #15803d 0%, #16a34a 50%, #059669 100%) !important;
+    border: none !important;
+    color: #ffffff !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.3px !important;
+    padding: 14px 28px !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35) !important;
+    transition: all 0.2s ease !important;
+    margin-top: 10px !important;
+    margin-bottom: 15px !important;
+}
+button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #166534 0%, #15803d 50%, #047857 100%) !important;
+    box-shadow: 0 6px 20px rgba(22, 163, 74, 0.5) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── Floating AgrowGrow Chatbot Button (Fixed at Bottom-Right Corner) ── */
+div[data-testid="stPopover"] {
+    position: fixed !important;
+    bottom: 28px !important;
+    right: 28px !important;
+    left: auto !important;
+    width: auto !important;
+    max-width: fit-content !important;
+    z-index: 999999 !important;
+}
+
+div[data-testid="stPopover"] > button {
+    background: linear-gradient(135deg, #16a34a 0%, #059669 100%) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+    border-radius: 999px !important;
+    padding: 13px 24px !important;
+    border: 2px solid rgba(255,255,255,0.6) !important;
+    box-shadow: 0 6px 24px rgba(22, 163, 74, 0.5) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    cursor: pointer !important;
+    transition: all 0.25s ease !important;
+}
+
+div[data-testid="stPopover"] > button:hover {
+    transform: translateY(-3px) scale(1.04) !important;
+    box-shadow: 0 10px 32px rgba(22, 163, 74, 0.65) !important;
+    background: linear-gradient(135deg, #15803d 0%, #047857 100%) !important;
+}
+
+/* Floating popover dialog window */
+div[data-testid="stPopoverBody"] {
+    max-width: 450px !important;
+    min-width: 360px !important;
+    max-height: 560px !important;
+    border-radius: 18px !important;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.22) !important;
+    border: 1.5px solid #cbd5e1 !important;
+    padding: 18px !important;
+    background: #ffffff !important;
+}
+</style>
 """, unsafe_allow_html=True)
 
 # ── Session State ─────────────────────────────────────────────────────────────
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "current_analysis" not in st.session_state:
-    st.session_state.current_analysis = None
+for key, default in {
+    "history":          [],
+    "current_analysis": None,
+    "chat_open":        False,
+    "chat_messages":    [],
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+# ── Init chatbot ──────────────────────────────────────────────────────────────
+@st.cache_resource
+def get_chatbot():
+    return CornChatbot()
+
+chatbot = get_chatbot()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -117,17 +395,15 @@ with st.sidebar:
     storage_type = st.selectbox("Storage Type", global_config.storage_types, index=0)
 
     if storage_type == "Cold Storage":
-        temp_input = st.slider("Temperature (°C)", min_value=-20.0, max_value=10.0, value=-2.0, step=0.5,
-            help="Cold storage: sub-zero and chilled ranges (-20°C to +10°C).")
-        humidity_input = st.slider("Humidity (%)", min_value=30.0, max_value=90.0, value=50.0, step=1.0)
+        temp_input = st.slider("Temperature (°C)", -20.0, 10.0, -2.0, 0.5,
+                               help="Sub-zero to chilled range for cold storage.")
+        humidity_input = st.slider("Humidity (%)", 30.0, 90.0, 50.0, 1.0)
     elif storage_type == "Hermetic Bag":
-        temp_input = st.slider("Temperature (°C)", min_value=5.0, max_value=40.0, value=22.0, step=0.5,
-            help="Hermetically sealed bag, controlled ambient conditions.")
-        humidity_input = st.slider("Humidity (%)", min_value=30.0, max_value=95.0, value=65.0, step=1.0)
+        temp_input = st.slider("Temperature (°C)", 5.0, 40.0, 22.0, 0.5)
+        humidity_input = st.slider("Humidity (%)", 30.0, 95.0, 65.0, 1.0)
     else:
-        temp_input = st.slider("Temperature (°C)", min_value=10.0, max_value=50.0, value=28.0, step=0.5,
-            help="Open air field / warehouse ambient conditions.")
-        humidity_input = st.slider("Humidity (%)", min_value=30.0, max_value=98.0, value=75.0, step=1.0)
+        temp_input = st.slider("Temperature (°C)", 10.0, 50.0, 28.0, 0.5)
+        humidity_input = st.slider("Humidity (%)", 30.0, 98.0, 75.0, 1.0)
 
     st.markdown("---")
     st.markdown("### 🌾 Grain Variety")
@@ -135,11 +411,14 @@ with st.sidebar:
         "Corn Variety Mode",
         options=[
             "🔍 Auto-Detect Variety",
-            "🌾 Indian / Flint / Multi-colored Corn",
-            "🌽 Commercial Dent Corn (Yellow/White)"
+            "🌽 Dent Corn (Yellow/White) — Commercial",
+            "🎨 Indian / Flint Corn (Multicoloured)",
+            "🍬 Sweet Corn (Pale Cream/Yellow)",
+            "🍿 Popcorn (Small Hard Kernels)",
+            "🔵 Blue / Black Corn (Hopi variety)",
         ],
         index=0,
-        help="For ruby-red or purple pigmented flint corn, select manually to prevent misclassification."
+        help="Select manually for unusual varieties to prevent misclassification of pigmentation as disease."
     )
 
     st.markdown("---")
@@ -148,6 +427,7 @@ with st.sidebar:
     device_options = ["Auto (GPU if available)", "CPU (Safe Mode)"] if has_cuda else ["CPU (Safe Mode)"]
     device_choice = st.selectbox("Inference Hardware", device_options, index=0)
     use_device = "cpu" if "CPU" in device_choice else None
+
     mode_label = "🟢 GPU Accelerated" if (has_cuda and use_device != "cpu") else "🔵 CPU Mode"
     st.info(f"**Active Mode:** {mode_label}")
 
@@ -155,57 +435,67 @@ with st.sidebar:
     if weights_file.exists():
         st.success("✅ Model Weights Loaded")
     else:
-        st.warning("⚠️ No weights found — train first")
+        st.warning("⚠️ No weights — train first")
 
-# ── Main Header ───────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💬 AgrowGrow Status")
+    if chatbot.is_ai_powered:
+        st.success("🤖 Gemini AI Powered")
+    else:
+        import os
+        key = os.getenv("GEMINI_API_KEY", "")
+        if key:
+            st.error("❌ Gemini key set but init failed")
+        else:
+            st.info("ℹ️ Rule-based mode\nSet `GEMINI_API_KEY` for AI-powered chatbot")
+
+# ── Animated Header ───────────────────────────────────────────────────────────
 st.markdown("""
-<div style='text-align:center; padding: 8px 0 4px 0;'>
-  <h1 style='font-size:32px; font-weight:700; color:#0F172A; margin:0;'>🌽 AgroGrow</h1>
-  <p style='color:#64748B; font-size:15px; margin:4px 0 0 0;'>
-      Corn Quality Assessment &amp; Post-Harvest Shelf-Life Forecasting
-  </p>
+<div class='ag-header'>
+  <p class='ag-title'>🌽 AgroGrow</p>
+  <p class='ag-subtitle'>Post-Harvest Corn Quality Assessment &amp; Shelf-Life Forecasting</p>
+  <span class='ag-pill'>Semantic Segmentation · AI Grading · Storage Prediction</span>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-st.divider()
-
 # ── File Upload ───────────────────────────────────────────────────────────────
 uploaded_file = st.file_uploader(
-    "📁 Upload a corn image",
-    type=["jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp"],
-    help="Supported formats: JPG, JPEG, PNG, BMP, TIFF, WebP. Upload a close-up photograph of a corn cob."
+    "📁 Upload Corn Cob Image (JPG, JPEG, PNG, WEBP, BMP, etc.)",
+    type=["jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif"],
+    help="Upload a photograph of a corn cob in any format. The system automatically detects and analyzes the ear."
 )
 
 if uploaded_file is not None:
-    # Invalidate stale cache on new image upload
+    # Invalidate cache on new image
     if st.session_state.get("last_uploaded_name") != uploaded_file.name:
         st.session_state.last_uploaded_name = uploaded_file.name
         st.session_state.current_analysis = None
 
-    # Decode image bytes (handles all formats including PNG/TIFF/BMP/WebP)
-    file_bytes = np.frombuffer(uploaded_file.getvalue(), np.uint8)
-    _decoded_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    if _decoded_bgr is None:
-        st.error("❌ Could not read the uploaded image. Please try a different file.")
+    # Robust in-memory decoding supporting any format (JPG, PNG with/without alpha, WEBP, BMP)
+    file_bytes = np.asarray(bytearray(uploaded_file.getvalue()), dtype=np.uint8)
+    _raw_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    if _raw_bgr is None:
+        st.error("❌ Unable to decode the uploaded image file. Please verify it is a valid image.")
         st.stop()
 
-    # Save as JPEG temp file for downstream pipeline
-    tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-    cv2.imwrite(tfile.name, _decoded_bgr)
+    _raw_rgb = cv2.cvtColor(_raw_bgr, cv2.COLOR_BGR2RGB)
+    _H, _W = _raw_rgb.shape[:2]
+
+    # Save temporary file with appropriate image extension
+    ext = Path(uploaded_file.name).suffix.lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]:
+        ext = ".jpg"
+    tfile = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    cv2.imwrite(tfile.name, _raw_bgr)
     tfile.close()
     img_path = Path(tfile.name)
 
-    # Load and auto-crop
     from AgroGrow.prediction.predictor import auto_crop_corn_ear
-    _raw_bgr = cv2.imread(str(img_path))
-    _raw_rgb = cv2.cvtColor(_raw_bgr, cv2.COLOR_BGR2RGB)
-    _H, _W = _raw_rgb.shape[:2]
     _auto_cropped, _auto_bbox = auto_crop_corn_ear(_raw_rgb)
     _ax, _ay, _aw, _ah = _auto_bbox
     _is_full = (_aw >= _W * 0.95 and _ah >= _H * 0.95)
 
-    # ── Framing Control Bar ───────────────────────────────────────────────────
+    # ── Framing mode ─────────────────────────────────────────────────────────
     st.markdown("#### ✂️ Cob Framing Mode")
     f_col1, f_col2 = st.columns([1, 2])
     with f_col1:
@@ -217,17 +507,16 @@ if uploaded_file is not None:
     if st.session_state.get("last_crop_mode") != crop_mode:
         st.session_state.last_crop_mode = crop_mode
         st.session_state.current_analysis = None
-
     with f_col2:
         if crop_mode == "🌽 Auto Crop Ear":
             if _is_full:
                 st.info("ℹ️ Full image — no crop needed.")
             else:
-                st.success(f"✅ Ear auto-detected ({_aw}×{_ah} px) — background suppressed.")
+                st.success(f"✅ Ear auto-detected ({_aw}×{_ah} px).")
         elif crop_mode == "🖐 Manual Crop":
-            st.info("💡 Use sliders below to frame the corn ear.")
+            st.info("💡 Adjust boundary sliders below.")
         else:
-            st.info("📷 Full photograph analyzed with background suppression.")
+            st.info("📷 Full image with background suppression.")
 
     # ── Determine inference image ─────────────────────────────────────────────
     if crop_mode == "🌽 Auto Crop Ear":
@@ -235,7 +524,7 @@ if uploaded_file is not None:
             _target_crop = _raw_rgb[:, int(_W * 0.10):int(_W * 0.50)]
         else:
             _target_crop = _auto_cropped
-        _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        _c = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         cv2.imwrite(_c.name, cv2.cvtColor(_target_crop, cv2.COLOR_RGB2BGR))
         _c.close()
         inference_img_path = Path(_c.name)
@@ -244,71 +533,70 @@ if uploaded_file is not None:
         with st.expander("🛠️ Manual Framing Controls", expanded=True):
             p1, p2, p3, p4 = st.columns(4)
             if p1.button("🎯 Center Cob", key="btn_center"):
-                st.session_state["mc_x1"] = int(_W * 0.25); st.session_state["mc_x2"] = int(_W * 0.48)
-                st.session_state["mc_y1"] = int(_H * 0.05); st.session_state["mc_y2"] = int(_H * 0.95)
+                st.session_state.update(mc_x1=int(_W*0.25), mc_x2=int(_W*0.48),
+                                        mc_y1=int(_H*0.05), mc_y2=int(_H*0.95))
             if p2.button("🌽 Left Cob", key="btn_left"):
-                st.session_state["mc_x1"] = int(_W * 0.10); st.session_state["mc_x2"] = int(_W * 0.35)
-                st.session_state["mc_y1"] = int(_H * 0.05); st.session_state["mc_y2"] = int(_H * 0.95)
+                st.session_state.update(mc_x1=int(_W*0.10), mc_x2=int(_W*0.35),
+                                        mc_y1=int(_H*0.05), mc_y2=int(_H*0.95))
             if p3.button("🌾 Both Cobs", key="btn_both"):
-                st.session_state["mc_x1"] = int(_W * 0.10); st.session_state["mc_x2"] = int(_W * 0.50)
-                st.session_state["mc_y1"] = int(_H * 0.05); st.session_state["mc_y2"] = int(_H * 0.95)
-            if p4.button("🔄 Reset Full", key="btn_full"):
-                st.session_state["mc_x1"] = 0; st.session_state["mc_x2"] = _W
-                st.session_state["mc_y1"] = 0; st.session_state["mc_y2"] = _H
+                st.session_state.update(mc_x1=int(_W*0.10), mc_x2=int(_W*0.50),
+                                        mc_y1=int(_H*0.05), mc_y2=int(_H*0.95))
+            if p4.button("🔄 Reset", key="btn_full"):
+                st.session_state.update(mc_x1=0, mc_x2=_W, mc_y1=0, mc_y2=_H)
 
-            init_x1 = st.session_state.get("mc_x1", int(_W * 0.22) if _is_full else max(0, _ax))
-            init_x2 = st.session_state.get("mc_x2", int(_W * 0.49) if _is_full else min(_W, _ax + _aw))
-            init_y1 = st.session_state.get("mc_y1", int(_H * 0.05) if _is_full else max(0, _ay))
-            init_y2 = st.session_state.get("mc_y2", int(_H * 0.95) if _is_full else min(_H, _ay + _ah))
+            i_x1 = st.session_state.get("mc_x1", int(_W*0.22) if _is_full else max(0, _ax))
+            i_x2 = st.session_state.get("mc_x2", int(_W*0.49) if _is_full else min(_W, _ax+_aw))
+            i_y1 = st.session_state.get("mc_y1", int(_H*0.05) if _is_full else max(0, _ay))
+            i_y2 = st.session_state.get("mc_y2", int(_H*0.95) if _is_full else min(_H, _ay+_ah))
 
             s1, s2 = st.columns(2)
             with s1:
-                cx1 = st.slider("Left Boundary", 0, _W - 10, init_x1, key="slider_x1")
-                cx2 = st.slider("Right Boundary", cx1 + 10, _W, max(cx1 + 10, init_x2), key="slider_x2")
+                cx1 = st.slider("Left", 0, _W-10, i_x1, key="slider_x1")
+                cx2 = st.slider("Right", cx1+10, _W, max(cx1+10, i_x2), key="slider_x2")
             with s2:
-                cy1 = st.slider("Top Boundary", 0, _H - 10, init_y1, key="slider_y1")
-                cy2 = st.slider("Bottom Boundary", cy1 + 10, _H, max(cy1 + 10, init_y2), key="slider_y2")
+                cy1 = st.slider("Top", 0, _H-10, i_y1, key="slider_y1")
+                cy2 = st.slider("Bottom", cy1+10, _H, max(cy1+10, i_y2), key="slider_y2")
 
         _target_crop = _raw_rgb[cy1:cy2, cx1:cx2]
-        _c = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        _c = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         cv2.imwrite(_c.name, cv2.cvtColor(_target_crop, cv2.COLOR_RGB2BGR))
         _c.close()
         inference_img_path = Path(_c.name)
-
-    else:  # Full Image
+    else:
         _target_crop = _raw_rgb
         inference_img_path = img_path
 
-    # ── Preview Images ────────────────────────────────────────────────────────
+    # ── Image Preview ─────────────────────────────────────────────────────────
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    v_col1, v_col2 = st.columns(2)
-    with v_col1:
-        st.markdown("<p class='section-header'>📷 Original Image</p>", unsafe_allow_html=True)
+    v1, v2 = st.columns(2)
+    with v1:
+        st.markdown("<p class='section-hdr'>📷 Original Image</p>", unsafe_allow_html=True)
         st.image(_raw_rgb, use_container_width=True, caption=f"Original — {_W}×{_H} px")
-    with v_col2:
-        st.markdown("<p class='section-header'>🎯 Region for Analysis</p>", unsafe_allow_html=True)
+    with v2:
+        st.markdown("<p class='section-hdr'>🎯 Region for Analysis</p>", unsafe_allow_html=True)
         st.image(_target_crop, use_container_width=True,
                  caption=f"Model Input — {_target_crop.shape[1]}×{_target_crop.shape[0]} px")
 
-    # ── Run Analysis Button ───────────────────────────────────────────────────
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    if st.button("🔍  Run Quality Assessment", use_container_width=True, type="primary"):
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    # ── Run Analysis Button (Immediately below the images) ────────────────────
+    if st.button("🔍  Run Quality Assessment Pipeline", use_container_width=True, type="primary", key="btn_run_assessment"):
         with st.spinner("Analysing kernels — please wait..."):
             try:
                 predictor = CornPredictor(device=use_device)
                 mask, overlay, _, confidence = predictor.predict_single(
                     inference_img_path, auto_crop=False, corn_variety=corn_variety_input
                 )
-
-                overlay_temp_path = Path(tempfile.gettempdir()) / f"{img_path.stem}_overlay.png"
+                global_config.results_dir.mkdir(parents=True, exist_ok=True)
+                overlay_temp_path = global_config.results_dir / f"{img_path.stem}_overlay.png"
                 cv2.imwrite(str(overlay_temp_path), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
 
                 features = CornFeatureExtractor.extract_features(mask)
-                grading = CornGrader.classify_grade(features, confidence)
+                grading  = CornGrader.classify_grade(features, confidence)
 
                 try:
-                    storage_predictor = StoragePredictor()
-                    shelf_life, risk_level, recommendation = storage_predictor.predict(
+                    sp = StoragePredictor()
+                    shelf_life, risk_level, recommendation = sp.predict(
                         healthy_pct=features["healthy_percentage"],
                         disease_pct=features["disease_percentage"],
                         missing_pct=features["missing_percentage"],
@@ -319,363 +607,405 @@ if uploaded_file is not None:
                         storage_type=storage_type
                     )
                 except Exception as e:
-                    logger.warning(f"Storage model load failed: {e}. Using heuristic fallback.")
+                    logger.warning(f"Storage model failed: {e}")
                     shelf_life = 45.0
                     risk_level = "Medium Risk"
                     recommendation = "Aerate grain and store in a cool, low-moisture silo."
 
                 st.session_state.current_analysis = {
-                    "image_path": img_path,
+                    "image_path":   img_path,
                     "overlay_path": overlay_temp_path,
-                    "features": features,
-                    "grading": grading,
-                    "variety": getattr(predictor, "last_detected_variety", "Commercial Dent Corn (Yellow/White)"),
+                    "features":     features,
+                    "grading":      grading,
+                    "variety":      getattr(predictor, "last_detected_variety",
+                                           "Commercial Dent Corn (Zea mays indentata)"),
                     "storage": {
                         "shelf_life_days": shelf_life,
-                        "risk_level": risk_level,
-                        "recommendation": recommendation,
-                        "temperature_c": temp_input,
-                        "humidity_pct": humidity_input,
-                        "storage_type": storage_type
+                        "risk_level":      risk_level,
+                        "recommendation":  recommendation,
+                        "temperature_c":   temp_input,
+                        "humidity_pct":    humidity_input,
+                        "storage_type":    storage_type
                     }
                 }
 
                 st.session_state.history.append({
-                    "Filename": uploaded_file.name,
-                    "Grade": grading["grade"],
+                    "Filename":      uploaded_file.name,
+                    "Grade":         grading["grade"],
                     "Quality Score": f"{features['quality_score']:.1f}/100",
-                    "Shelf Life": f"{shelf_life:.1f} Days",
-                    "Risk": risk_level
+                    "Shelf Life":    f"{shelf_life:.0f} Days",
+                    "Risk":          risk_level
                 })
+
+                # Reset chat on new analysis
+                st.session_state.chat_messages = []
 
             except Exception as ex:
                 st.error(f"❌ Assessment Error: {ex}")
                 logger.exception(ex)
-                st.stop()
 
-    # ── Results Display ───────────────────────────────────────────────────────
+    # ── Results ───────────────────────────────────────────────────────────────
     if st.session_state.current_analysis is not None:
         res = st.session_state.current_analysis
-        f = res["features"]
-        g = res["grading"]
-        s = res["storage"]
+        f   = res["features"]
+        g   = res["grading"]
+        s   = res["storage"]
+        variety_name = res.get("variety", "Commercial Dent Corn (Zea mays indentata)")
 
         st.divider()
 
-        # ── No-Corn Detection ─────────────────────────────────────────────────
-        _total_px     = f["total_corn_area_pixels"]
-        _img_total_px = _raw_rgb.shape[0] * _raw_rgb.shape[1]
-        _corn_cov     = (_total_px / max(_img_total_px, 1)) * 100
-        _corn_found   = (_total_px >= 500 and _corn_cov >= 1.0)
+        # ── Health Status Notification Banner ────────────────────────────────
+        no_corn      = f.get("no_corn_detected", False)
+        quality_sc   = f["quality_score"]
+        disease_pct  = f["disease_percentage"]
 
-        grade_text = g["grade"]
-
-        if not _corn_found:
-            st.toast("🚫 No corn detected in this image!", icon="⚠️")
+        if no_corn:
             st.markdown("""
-            <div style='background:#FEF2F2; border:2px solid #FECACA; border-radius:12px;
-                        padding:24px 28px; margin-bottom:20px;'>
-                <div style='font-size:22px; font-weight:700; color:#7F1D1D; margin-bottom:10px;'>
-                    🚫 No Corn Detected in This Image
+            <div class='health-banner health-banner-nocorn'>
+                <div class='health-icon'>🔍</div>
+                <div>
+                    <div class='health-title' style='color:#475569;'>No Corn Detected</div>
+                    <div class='health-desc' style='color:#64748b;'>
+                        The model could not find any corn kernels in this image.
+                        Please upload a clear, close-up photograph of a corn cob.
+                    </div>
                 </div>
-                <div style='font-size:14px; color:#991B1B; line-height:1.7;'>
-                    The model could not find a recognisable corn cob in the uploaded image.<br>
-                    Please try again with a <b>clear, close-up photograph</b> where the corn ear
-                    occupies most of the frame.
+            </div>""", unsafe_allow_html=True)
+        elif quality_sc >= 75 and disease_pct < 5.0:
+            st.markdown(f"""
+            <div class='health-banner health-banner-healthy'>
+                <div class='health-icon'>✅</div>
+                <div>
+                    <div class='health-title' style='color:#166534;'>Corn is Healthy — Excellent Condition</div>
+                    <div class='health-desc' style='color:#15803d;'>
+                        Quality Score {quality_sc:.1f}/100 · Disease level {disease_pct:.1f}% (well within safe limits)
+                        · Classified as <strong>{g["grade"]}</strong>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+        elif quality_sc >= 45 and disease_pct < 20.0:
+            st.markdown(f"""
+            <div class='health-banner health-banner-warning'>
+                <div class='health-icon'>⚠️</div>
+                <div>
+                    <div class='health-title' style='color:#92400e;'>Moderate Issues Detected</div>
+                    <div class='health-desc' style='color:#b45309;'>
+                        Quality Score {quality_sc:.1f}/100 · Disease level {disease_pct:.1f}%
+                        · Classified as <strong>{g["grade"]}</strong>
+                        · Monitor storage conditions closely.
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class='health-banner health-banner-danger'>
+                <div class='health-icon'>❌</div>
+                <div>
+                    <div class='health-title' style='color:#991b1b;'>Severe Disease / Defects Detected</div>
+                    <div class='health-desc' style='color:#b91c1c;'>
+                        Quality Score {quality_sc:.1f}/100 · Disease level {disease_pct:.1f}%
+                        · Classified as <strong>{g["grade"]}</strong>
+                        · Immediate action required — inspect for mycotoxins.
+                    </div>
                 </div>
             </div>""", unsafe_allow_html=True)
 
-        else:
-            # ── Health Status Advisory Banner ─────────────────────────────────
-            _hp  = f["healthy_percentage"]
-            _dp  = f["disease_percentage"]
-            _mp  = f["missing_percentage"]
-            _qs  = f["quality_score"]
+        # Variety chip
+        var_emoji = "🌽"
+        if "flint" in variety_name.lower() or "indian" in variety_name.lower():
+            var_emoji = "🎨"
+        elif "sweet" in variety_name.lower():
+            var_emoji = "🍬"
+        elif "popcorn" in variety_name.lower() or "everta" in variety_name.lower():
+            var_emoji = "🍿"
+        elif "blue" in variety_name.lower() or "black" in variety_name.lower():
+            var_emoji = "🔵"
 
-            if _dp >= 30:
-                _hicon, _htitle = "🔴", "Severely Diseased — Immediate Action Required"
-                _hbg, _hborder, _htxt = "#FEF2F2", "#FECACA", "#7F1D1D"
-                _advice = (
-                    f"This batch has <b>{_dp:.1f}%</b> diseased kernels — critically high. "
-                    "⚠️ <b>Do not mix with healthy stock.</b> Isolate immediately and consult an agronomist. "
-                    "Consider diverting to industrial starch processing or animal feed."
-                )
-                st.toast(f"🔴 Severely Diseased ({_dp:.1f}%): Immediate action required!", icon="🚨")
-            elif _dp >= 15 or _mp >= 20:
-                _hicon, _htitle = "🟠", "Moderate Disease / Damage — Intervention Advised"
-                _hbg, _hborder, _htxt = "#FFFBEB", "#FDE68A", "#78350F"
-                _advice = (
-                    f"Disease: <b>{_dp:.1f}%</b> · Missing kernels: <b>{_mp:.1f}%</b>. "
-                    "🌡️ Reduce storage temperature, keep humidity below 65% RH. "
-                    "Remove visibly infected cobs before bulk storage. Re-inspect within 7 days."
-                )
-                st.toast(f"🟠 Disease / Damage ({_dp:.1f}%): Intervention advised.", icon="⚠️")
-            elif _dp >= 5 or _qs < 70:
-                _hicon, _htitle = "🟡", "Minor Issues Detected — Monitor Closely"
-                _hbg, _hborder, _htxt = "#FEFCE8", "#FEF08A", "#854D0E"
-                _advice = (
-                    f"Quality score: <b>{_qs:.1f}/100</b> · Disease: <b>{_dp:.1f}%</b>. "
-                    "✅ Batch is acceptable for storage but should be monitored weekly. "
-                    "Maintain proper aeration and dry conditions."
-                )
-                st.toast(f"🟡 Minor Defects ({_dp:.1f}%): Monitor storage conditions.", icon="ℹ️")
-            else:
-                _hicon, _htitle = "🟢", "Corn is Healthy — Good Quality"
-                _hbg, _hborder, _htxt = "#F0FDF4", "#BBF7D0", "#14532D"
-                _advice = (
-                    f"Excellent quality — <b>{_hp:.1f}%</b> healthy kernels with only "
-                    f"<b>{_dp:.1f}%</b> disease. "
-                    "🏪 Suitable for market sale, export, or long-term cold storage. "
-                    "Re-inspect every 30 days."
-                )
-                st.toast(f"🟢 Corn is Healthy ({_hp:.1f}% healthy kernels) — {grade_text}!", icon="🌽")
+        st.markdown(f"""
+        <div class='variety-chip'>
+            <span style='font-size:20px;'>{var_emoji}</span>
+            <span><strong>Detected Variety:</strong> {variety_name}</span>
+        </div>""", unsafe_allow_html=True)
+
+        # ── Section 1: Overlay + Legend ───────────────────────────────────────
+        st.markdown("<p class='section-hdr'>🎨 Segmentation Overlay</p>", unsafe_allow_html=True)
+        ov1, ov2 = st.columns([1.4, 1])
+        with ov1:
+            st.image(str(res["overlay_path"]), use_container_width=True,
+                     caption="CornNet semantic segmentation — natural photo blend")
+        with ov2:
+            st.markdown("""
+            <div class='legend-card'>
+                <p style='font-size:13px;font-weight:700;color:#1e293b;margin:0 0 18px 0;'>Colour Legend</p>
+                <div class='legend-row'>
+                    <div class='legend-dot' style='background:#00CC00;'></div>
+                    <div>
+                        <div style='font-size:13px;font-weight:600;color:#334155;'>Healthy Kernels</div>
+                        <div style='font-size:11px;color:#94a3b8;'>Fully formed, disease-free kernels</div>
+                    </div>
+                </div>
+                <div class='legend-row'>
+                    <div class='legend-dot' style='background:#0066FF;'></div>
+                    <div>
+                        <div style='font-size:13px;font-weight:600;color:#334155;'>Missing Kernel Sockets</div>
+                        <div style='font-size:11px;color:#94a3b8;'>Empty slots / kernel loss</div>
+                    </div>
+                </div>
+                <div class='legend-row'>
+                    <div class='legend-dot' style='background:#FF2222;'></div>
+                    <div>
+                        <div style='font-size:13px;font-weight:600;color:#334155;'>Diseased / Rotten Kernels</div>
+                        <div style='font-size:11px;color:#94a3b8;'>Fungal rot, mould, necrosis</div>
+                    </div>
+                </div>
+                <div style='height:1px;background:#e2e8f0;margin:14px 0;'></div>
+                <p style='font-size:11px;color:#94a3b8;line-height:1.5;margin:0;'>
+                    Overlay blends class predictions at 55% opacity over the original photo.
+                    Background pixels remain uncoloured.
+                </p>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        # ── Section 2: KPI Cards ──────────────────────────────────────────────
+        st.markdown("<p class='section-hdr'>📊 Quality Metrics</p>", unsafe_allow_html=True)
+
+        grade_text  = g["grade"]
+        raw_conf    = g["confidence"]
+        conf_pct    = raw_conf * 100.0 if raw_conf <= 1.0 else raw_conf
+        grade_ltr   = grade_text.replace("Grade ", "") if "Grade" in grade_text else "D"
+        risk_col    = ("#16a34a" if "Low" in s["risk_level"] else
+                       ("#d97706" if "Medium" in s["risk_level"] else "#dc2626"))
+
+        kc1, kc2, kc3, kc4 = st.columns(4)
+        with kc1:
+            st.markdown(f"""
+            <div class='kpi-card' style='border-top-color:#3b82f6;animation-delay:0s;'>
+                <div class='kpi-label'>Quality Grade</div>
+                <div class='kpi-value'>{grade_text}</div>
+                <span class='grade-badge grade-{grade_ltr}'>{conf_pct:.1f}% conf.</span>
+            </div>""", unsafe_allow_html=True)
+        with kc2:
+            st.markdown(f"""
+            <div class='kpi-card' style='border-top-color:#22c55e;animation-delay:0.07s;'>
+                <div class='kpi-label'>Quality Score</div>
+                <div class='kpi-value'>{f["quality_score"]:.1f}<span style='font-size:16px;font-weight:400;color:#94a3b8;'>/100</span></div>
+                <div class='kpi-sub'>Healthy: {f["healthy_percentage"]:.1f}%</div>
+            </div>""", unsafe_allow_html=True)
+        with kc3:
+            st.markdown(f"""
+            <div class='kpi-card' style='border-top-color:#f59e0b;animation-delay:0.14s;'>
+                <div class='kpi-label'>Estimated Shelf Life</div>
+                <div class='kpi-value'>{s["shelf_life_days"]:.0f}<span style='font-size:16px;font-weight:400;color:#94a3b8;'> days</span></div>
+                <div class='kpi-sub'>{s["temperature_c"]}°C · {s["humidity_pct"]}% RH</div>
+            </div>""", unsafe_allow_html=True)
+        with kc4:
+            st.markdown(f"""
+            <div class='kpi-card' style='border-top-color:{risk_col};animation-delay:0.21s;'>
+                <div class='kpi-label'>Storage Risk</div>
+                <div class='kpi-value' style='color:{risk_col};font-size:22px;'>{s["risk_level"]}</div>
+                <div class='kpi-sub'>{s["storage_type"]}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.divider()
+
+        # ── Section 3: Kernel composition + Storage ───────────────────────────
+        dc1, dc2 = st.columns(2)
+
+        with dc1:
+            st.markdown("<p class='section-hdr'>🌱 Kernel Composition</p>", unsafe_allow_html=True)
+
+            def pbar(label, val, color, icon):
+                bw = max(0.5, min(float(val), 100))
+                st.markdown(f"""
+                <div class='pbar-wrap'>
+                    <div class='pbar-meta'>
+                        <span>{icon} {label}</span>
+                        <span style='font-weight:700;color:#0f172a;'>{val:.2f}%</span>
+                    </div>
+                    <div class='pbar-track'>
+                        <div class='pbar-fill' style='width:{bw}%;background:{color};'></div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+            pbar("Healthy Kernels",  f["healthy_percentage"],  "#22c55e", "🟢")
+            pbar("Missing Kernels",  f["missing_percentage"],  "#3b82f6", "🔵")
+            pbar("Diseased Kernels", f["disease_percentage"],  "#ef4444", "🔴")
 
             st.markdown(f"""
-            <div style='background:{_hbg}; border:2px solid {_hborder};
-                        border-radius:12px; padding:18px 24px; margin-bottom:20px;'>
-                <div style='font-size:18px; font-weight:700; color:{_htxt}; margin-bottom:8px;'>
-                    {_hicon} {_htitle}
-                </div>
-                <div style='font-size:13px; color:{_htxt}; line-height:1.7;'>
-                    {_advice}
+            <div style='margin-top:16px;padding:14px 16px;background:#f8fafc;border-radius:12px;
+                        border:1px solid #e2e8f0;'>
+                <div style='font-size:12px;color:#64748b;font-weight:600;'>Healthy Kernel Blobs</div>
+                <div style='font-size:22px;font-weight:800;color:#0f172a;margin-top:2px;'>
+                    {f["num_healthy_blobs"]}
+                    <span style='font-size:13px;font-weight:400;color:#94a3b8;'> healthy regions</span>
                 </div>
             </div>""", unsafe_allow_html=True)
 
-            # Variety banner (only for flint/indian corn)
-            variety_name = res.get("variety", "")
-            if "flint" in variety_name.lower() or "indian" in variety_name.lower():
-                st.markdown(f"""
-                <div class='variety-banner'>
-                    🌾 <b>Identified Variety:</b> {variety_name}<br>
-                    <span style='font-size:12px;'>
-                    Ruby-red and purple anthocyanin pigmentation recognised as healthy grain — not disease.
-                    </span>
-                </div>""", unsafe_allow_html=True)
+        with dc2:
+            st.markdown("<p class='section-hdr'>🏭 Storage Analysis</p>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class='st-card'>
+                <div class='st-row'><span class='st-key'>Storage Mode</span><span class='st-val'>{s["storage_type"]}</span></div>
+                <div class='st-row'><span class='st-key'>Temperature</span><span class='st-val'>{s["temperature_c"]} °C</span></div>
+                <div class='st-row'><span class='st-key'>Humidity</span><span class='st-val'>{s["humidity_pct"]} % RH</span></div>
+                <div class='st-row'><span class='st-key'>Predicted Shelf Life</span>
+                    <span class='st-val' style='color:{risk_col};'>{s["shelf_life_days"]:.0f} days</span></div>
+                <div class='st-row'><span class='st-key'>Risk Category</span>
+                    <span class='st-val' style='color:{risk_col};'>{s["risk_level"]}</span></div>
+                <div class='st-row' style='border-bottom:none;'>
+                    <span class='st-key'>Quality Grade</span><span class='st-val'>{grade_text}</span></div>
+            </div>""", unsafe_allow_html=True)
 
-            # ── Section 1: Segmentation Overlay ──────────────────────────────
-            st.markdown("<p class='section-header'>🎨 Segmentation Overlay</p>", unsafe_allow_html=True)
-            ov_c1, ov_c2 = st.columns([1.4, 1])
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-            with ov_c1:
-                st.image(str(res["overlay_path"]), use_container_width=True,
-                         caption="CornNet segmentation — natural photo blend")
+        # Grade summary + Recommendation
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown("<p class='section-hdr'>📋 Grade Summary</p>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;
+                        font-size:13px;color:#334155;line-height:1.65;'>
+                {g["summary"]}
+            </div>""", unsafe_allow_html=True)
+        with sc2:
+            st.markdown("<p class='section-hdr'>💡 Storage Recommendation</p>", unsafe_allow_html=True)
+            st.markdown(f"<div class='rec-box'>{s['recommendation']}</div>", unsafe_allow_html=True)
 
-            with ov_c2:
-                st.markdown("""
-                <div style='padding:20px; background:#F8FAFC; border-radius:12px; border:1px solid #E2E8F0; height:100%;'>
-                    <p style='font-size:13px; font-weight:600; color:#1E293B; margin:0 0 16px 0;'>Colour Legend</p>
-                    <div class='legend-row'>
-                        <div class='legend-dot' style='background:#00CC00;'></div>
-                        <div class='legend-label'>Healthy Kernels</div>
-                    </div>
-                    <div class='legend-row'>
-                        <div class='legend-dot' style='background:#0066FF;'></div>
-                        <div class='legend-label'>Missing Kernel Sockets</div>
-                    </div>
-                    <div class='legend-row'>
-                        <div class='legend-dot' style='background:#FF2222;'></div>
-                        <div class='legend-label'>Diseased / Rotten Kernels</div>
-                    </div>
-                    <div style='height:1px; background:#E2E8F0; margin:14px 0;'></div>
-                    <p style='font-size:11px; color:#94A3B8; line-height:1.5; margin:0;'>
-                        Overlay blends predicted kernel classes over the original photograph at 55% opacity.
-                        Background pixels remain uncoloured.
-                    </p>
-                </div>""", unsafe_allow_html=True)
-
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-            # ── Section 2: KPI Cards ──────────────────────────────────────────
-            st.markdown("<p class='section-header'>📊 Quality Metrics</p>", unsafe_allow_html=True)
-
-            grade_text   = g["grade"]
-            raw_conf     = g["confidence"]
-            conf_pct     = raw_conf * 100.0 if raw_conf <= 1.0 else raw_conf
-            grade_letter = grade_text.replace("Grade ", "") if "Grade" in grade_text else "D"
-            grade_class  = f"grade-{grade_letter}"
-            risk_color   = "#16A34A" if "Low" in s["risk_level"] else ("#D97706" if "Medium" in s["risk_level"] else "#DC2626")
-
-            kc1, kc2, kc3, kc4 = st.columns(4)
-
-            with kc1:
-                st.markdown(f"""
-                <div class='kpi-card' style='border-top-color:#3B82F6;'>
-                    <div class='kpi-label'>Quality Grade</div>
-                    <div class='kpi-value'>{grade_text}</div>
-                    <span class='grade-badge {grade_class}'>{conf_pct:.1f}% confidence</span>
-                </div>""", unsafe_allow_html=True)
-
-            with kc2:
-                st.markdown(f"""
-                <div class='kpi-card' style='border-top-color:#22C55E;'>
-                    <div class='kpi-label'>Quality Score</div>
-                    <div class='kpi-value'>{f["quality_score"]:.1f}<span style='font-size:16px;font-weight:400;color:#94A3B8;'>/100</span></div>
-                    <div class='kpi-sub'>Healthy: {f["healthy_percentage"]:.1f}%</div>
-                </div>""", unsafe_allow_html=True)
-
-            with kc3:
-                st.markdown(f"""
-                <div class='kpi-card' style='border-top-color:#F59E0B;'>
-                    <div class='kpi-label'>Estimated Shelf Life</div>
-                    <div class='kpi-value'>{s["shelf_life_days"]:.0f}<span style='font-size:16px;font-weight:400;color:#94A3B8;'> days</span></div>
-                    <div class='kpi-sub'>{s["temperature_c"]}°C · {s["humidity_pct"]}% RH</div>
-                </div>""", unsafe_allow_html=True)
-
-            with kc4:
-                st.markdown(f"""
-                <div class='kpi-card' style='border-top-color:{risk_color};'>
-                    <div class='kpi-label'>Storage Risk</div>
-                    <div class='kpi-value' style='color:{risk_color};font-size:22px;'>{s["risk_level"]}</div>
-                    <div class='kpi-sub'>{s["storage_type"]}</div>
-                </div>""", unsafe_allow_html=True)
-
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            st.divider()
-
-            # ── Section 3: Kernel Breakdown + Storage ────────────────────────
-            det_c1, det_c2 = st.columns(2)
-
-            with det_c1:
-                st.markdown("<p class='section-header'>🌱 Kernel Composition</p>", unsafe_allow_html=True)
-
-                def pct_bar(label, value, color, icon):
-                    bar_w = max(0.5, min(value, 100))
-                    st.markdown(f"""
-                    <div style='margin-bottom:14px;'>
-                        <div style='display:flex; justify-content:space-between; margin-bottom:4px;'>
-                            <span style='font-size:13px; font-weight:500; color:#334155;'>{icon} {label}</span>
-                            <span style='font-size:13px; font-weight:600; color:#0F172A;'>{value:.2f}%</span>
-                        </div>
-                        <div style='background:#F1F5F9; border-radius:999px; height:8px; overflow:hidden;'>
-                            <div style='width:{bar_w}%; background:{color}; height:8px; border-radius:999px;'></div>
-                        </div>
-                    </div>""", unsafe_allow_html=True)
-
-                pct_bar("Healthy Kernels",  f["healthy_percentage"], "#22C55E", "🟢")
-                pct_bar("Missing Kernels",  f["missing_percentage"], "#3B82F6", "🔵")
-                pct_bar("Diseased Kernels", f["disease_percentage"], "#EF4444", "🔴")
-
-                st.markdown(f"""
-                <div style='margin-top:12px; padding:12px; background:#F8FAFC; border-radius:10px; border:1px solid #E2E8F0;'>
-                    <div style='font-size:12px; color:#64748B; font-weight:500;'>Kernel Density Blobs</div>
-                    <div style='font-size:18px; font-weight:700; color:#0F172A; margin-top:2px;'>
-                        {f["num_healthy_blobs"]} <span style='font-size:13px; font-weight:400; color:#94A3B8;'>healthy regions</span>
-                    </div>
-                </div>""", unsafe_allow_html=True)
-
-            with det_c2:
-                st.markdown("<p class='section-header'>🏭 Storage Analysis</p>", unsafe_allow_html=True)
-                st.markdown(f"""
-                <div class='storage-card'>
-                    <div class='storage-row'>
-                        <span class='storage-key'>Storage Mode</span>
-                        <span class='storage-val'>{s["storage_type"]}</span>
-                    </div>
-                    <div class='storage-row'>
-                        <span class='storage-key'>Temperature</span>
-                        <span class='storage-val'>{s["temperature_c"]} °C</span>
-                    </div>
-                    <div class='storage-row'>
-                        <span class='storage-key'>Humidity</span>
-                        <span class='storage-val'>{s["humidity_pct"]} % RH</span>
-                    </div>
-                    <div class='storage-row'>
-                        <span class='storage-key'>Predicted Shelf Life</span>
-                        <span class='storage-val' style='color:{risk_color};'>{s["shelf_life_days"]:.0f} days</span>
-                    </div>
-                    <div class='storage-row'>
-                        <span class='storage-key'>Risk Category</span>
-                        <span class='storage-val' style='color:{risk_color};'>{s["risk_level"]}</span>
-                    </div>
-                    <div class='storage-row' style='border-bottom:none;'>
-                        <span class='storage-key'>Grade Classification</span>
-                        <span class='storage-val'>{grade_text}</span>
-                    </div>
-                </div>""", unsafe_allow_html=True)
-
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-            # Grade Summary + Storage Recommendation
-            sum_c1, sum_c2 = st.columns(2)
-
-            with sum_c1:
-                st.markdown("<p class='section-header'>📋 Grade Summary</p>", unsafe_allow_html=True)
-                st.markdown(f"""
-                <div style='padding:16px; background:#F8FAFC; border-radius:10px; border:1px solid #E2E8F0;
-                            font-size:13px; color:#334155; line-height:1.6;'>
-                    {g["summary"]}
-                </div>""", unsafe_allow_html=True)
-
-            with sum_c2:
-                st.markdown("<p class='section-header'>💡 Storage Recommendation</p>", unsafe_allow_html=True)
-                st.markdown(f"""
-                <div class='rec-box'>
-                    {s["recommendation"]}
-                </div>""", unsafe_allow_html=True)
-
-            st.divider()
-
-            # ── Section 4: PDF Report ─────────────────────────────────────────
-            st.markdown("<p class='section-header'>📄 Quality Assessment Report</p>", unsafe_allow_html=True)
-            pdf_c1, pdf_c2 = st.columns([2, 1])
-
-            with pdf_c1:
-                st.markdown("""
-                <div style='font-size:13px; color:#64748B; line-height:1.6; padding:12px 0;'>
-                    Download a formatted PDF report containing the segmentation overlay, kernel metrics,
-                    storage projection, and grade classification for this batch.
-                </div>""", unsafe_allow_html=True)
-
-            with pdf_c2:
-                report_name = f"{img_path.stem}_quality_report.pdf"
-                pdf_path = global_config.reports_dir / report_name
-
-                if st.button("🛠️ Compile PDF Report", use_container_width=True):
-                    with st.spinner("Generating PDF..."):
-                        try:
-                            PDFReportGenerator.generate(
-                                image_path=res["image_path"],
-                                overlay_path=res["overlay_path"],
-                                features=f,
-                                grading=g,
-                                storage=s,
-                                output_pdf_path=pdf_path
-                            )
-                            st.success(f"✅ Report ready: {report_name}")
-                        except Exception as e:
-                            st.error(f"PDF generation failed: {e}")
-                            logger.exception(e)
-
-                if pdf_path.exists():
-                    with open(pdf_path, "rb") as pdf_file:
-                        st.download_button(
-                            label="📥 Download PDF",
-                            data=pdf_file,
-                            file_name=report_name,
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
-
-        # ── Session History (always shown after any analysis) ─────────────────
         st.divider()
-        st.markdown("<p class='section-header'>🕒 Assessment History (This Session)</p>", unsafe_allow_html=True)
+
+        # ── Section 4: PDF Report ──────────────────────────────────────────────
+        st.markdown("<p class='section-hdr'>📄 Quality Assessment Report</p>", unsafe_allow_html=True)
+        pc1, pc2 = st.columns([2, 1])
+        with pc1:
+            st.markdown("""
+            <div style='font-size:13px;color:#64748b;line-height:1.65;padding:8px 0;'>
+                Download a formatted PDF containing the segmentation overlay, kernel metrics,
+                storage projection, and grade classification for this batch.
+            </div>""", unsafe_allow_html=True)
+        with pc2:
+            report_name = f"{img_path.stem}_quality_report.pdf"
+            pdf_path    = global_config.reports_dir / report_name
+            if st.button("🛠️ Compile PDF Report", use_container_width=True):
+                with st.spinner("Generating PDF..."):
+                    try:
+                        PDFReportGenerator.generate(
+                            image_path=res["image_path"],
+                            overlay_path=res["overlay_path"],
+                            features=f, grading=g, storage=s,
+                            output_pdf_path=pdf_path
+                        )
+                        st.success(f"✅ {report_name}")
+                    except Exception as e:
+                        st.error(f"PDF failed: {e}")
+                        logger.exception(e)
+            if pdf_path.exists():
+                with open(pdf_path, "rb") as pf:
+                    st.download_button("📥 Download PDF", data=pf,
+                                       file_name=report_name, mime="application/pdf",
+                                       use_container_width=True)
+
+        st.divider()
+
+        # ── Section 5: History ────────────────────────────────────────────────
+        st.markdown("<p class='section-hdr'>🕒 Assessment History</p>", unsafe_allow_html=True)
         if st.session_state.history:
-            history_df = pd.DataFrame(st.session_state.history)
-            st.dataframe(history_df, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(st.session_state.history),
+                         use_container_width=True, hide_index=True)
         else:
             st.caption("No assessments run yet.")
 
+        # ── Floating Chatbot ──────────────────────────────────────────────────
+        # Build chatbot context from current results
+        chat_context = {
+            **f,
+            **g,
+            **s,
+            "variety": variety_name
+        }
+
 else:
+    # ── Disabled Run Button for Initial Clarity ──────────────────────────────
+    st.button(
+        "🔍  Run Quality Assessment Pipeline",
+        use_container_width=True,
+        disabled=True,
+        help="Please upload a corn cob image above to enable assessment",
+        key="btn_run_assessment_disabled"
+    )
+    st.caption("👆 Upload an image above (.jpg, .jpeg, .png, etc.) to activate quality assessment.")
+
     # ── Empty State ───────────────────────────────────────────────────────────
+    chat_context = None
     st.markdown("""
-    <div style='text-align:center; padding:60px 40px; background:#F8FAFC;
-                border-radius:16px; border:2px dashed #E2E8F0; margin-top:24px;'>
-        <div style='font-size:52px; margin-bottom:12px;'>🌽</div>
-        <h3 style='color:#1E293B; font-weight:600; margin:0 0 8px 0;'>Upload a Corn Image to Get Started</h3>
-        <p style='color:#64748B; font-size:14px; max-width:520px; margin:0 auto; line-height:1.7;'>
-            Upload a clear, close-up photograph of a corn cob. The system will automatically detect
-            the ear, run semantic segmentation, grade quality, and estimate shelf life.<br><br>
-            <span style='font-size:12px; color:#94A3B8;'>Supported formats: JPG · JPEG · PNG · BMP · TIFF · WebP</span>
+    <div class='empty-state'>
+        <div style='font-size:64px;margin-bottom:16px;'>🌽</div>
+        <h3 style='color:#1e293b;font-weight:700;margin:0 0 10px 0;font-size:22px;'>
+            Upload a Corn Image to Get Started
+        </h3>
+        <p style='color:#64748b;font-size:14px;max-width:520px;margin:0 auto;line-height:1.7;'>
+            Upload a photo of a corn cob in any standard image format (.jpg, .jpeg, .png, .webp, .bmp).
+            The system will automatically detect the ear, run semantic segmentation,
+            classify the grain variety, evaluate USDA/ISO grade, and forecast shelf life.
         </p>
+        <div style='display:flex;gap:16px;justify-content:center;margin-top:24px;flex-wrap:wrap;'>
+            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:#475569;'>🔬 Semantic Segmentation</div>
+            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:#475569;'>📊 USDA / ISO Grading</div>
+            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:#475569;'>📦 Shelf-Life Forecast</div>
+            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:#475569;'>🌾 5 Variety Detection</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
+    chat_context = None
+
+# ── Floating AgrowGrow Chatbot Popover (Always anchored at Bottom-Right) ─────────
+with st.popover("💬 Ask AgroGrow AI", help="Chat with AgroGrow Virtual Agronomist"):
+    st.markdown("### 🌽 AgroGrow Virtual Agronomist")
+    status_badge = "🟢 Gemini 1.5 Flash AI" if chatbot.is_ai_powered else "🔵 Agronomic Knowledge Base"
+    st.caption(f"{status_badge} · Answers variety, health, and storage questions.")
+
+    if chat_context:
+        st.info(
+            f"📊 **Batch Context:** {chat_context.get('variety', 'Corn')} | "
+            f"Grade: **{chat_context.get('grade', 'N/A')}** | "
+            f"Shelf-life: **{chat_context.get('shelf_life_days', 0):.0f} days**"
+        )
+    else:
+        st.caption("💡 *Tip: Upload an image to enable batch-specific analysis and diagnosis!*")
+
+    # Scrollable chat messages container
+    chat_container = st.container(height=300)
+    with chat_container:
+        if not st.session_state.chat_messages:
+            st.markdown(
+                "👋 **Welcome! I'm AgrowGrow.** Ask me anything about:\n\n"
+                "- 🌾 **Corn Varieties** (Dent, Flint, Sweet, Popcorn, Hopi Blue/Black)\n"
+                "- 🌡️ **Storage Optimization** (Cold storage, moisture, aeration, shelf-life)\n"
+                "- 🔬 **Diseases & Defects** (Ear rot, leaf blight, molds, missing kernels)\n"
+                "- 📊 **Batch Grading** (Quality criteria, grade requirements)"
+            )
+        else:
+            for msg in st.session_state.chat_messages:
+                avatar = "👨‍🌾" if msg["role"] == "assistant" else "👤"
+                with st.chat_message(msg["role"], avatar=avatar):
+                    st.markdown(msg["content"])
+
+    # Chat Input
+    user_q = st.chat_input("Ask AgrowGrow about corn varieties, diseases, storage...", key="AgrowGrow_popover_input")
+    if user_q:
+        st.session_state.chat_messages.append({"role": "user", "content": user_q})
+        with st.spinner("AgrowGrow is thinking..."):
+            reply = chatbot.chat(user_q, analysis_context=chat_context)
+        st.session_state.chat_messages.append({"role": "assistant", "content": reply})
+        st.rerun()
+
+    # Clear chat button
+    if st.session_state.chat_messages:
+        if st.button("🗑️ Clear Chat History", key="btn_clear_chat", use_container_width=True):
+            st.session_state.chat_messages = []
+            st.rerun()

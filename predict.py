@@ -7,6 +7,7 @@ grades it, predicts storage life, and generates a PDF report.
 import argparse
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -23,7 +24,8 @@ def run_pipeline(
     image_path: Path,
     temperature: float = 25.0,
     humidity: float = 70.0,
-    storage_type: str = "Open Air"
+    storage_type: str = "Open Air",
+    assistant_query: Optional[str] = None
 ) -> dict:
     """
     Executes the full assessment pipeline for a single image.
@@ -32,9 +34,10 @@ def run_pipeline(
     if not image_path.exists():
         raise FileNotFoundError(f"Input image not found: {image_path}")
         
-    # 1. Image Segmentation Inference
+    # 1. Image Segmentation Inference & Variety Detection
     predictor = CornPredictor()
     mask, overlay, _, confidence = predictor.predict_single(image_path)
+    detected_variety = predictor.last_detected_variety
     
     # Save the overlay image temporarily or in the results folder
     overlay_path = global_config.results_dir / f"{image_path.stem}_overlay.png"
@@ -77,7 +80,32 @@ def run_pipeline(
         "storage_type": storage_type
     }
     
-    # 5. Report Generation
+    # 5. AI Assistant Query
+    assistant_reply = ""
+    if assistant_query:
+        try:
+            from AgroGrow.assistant.chatbot import CornChatbot
+            chatbot = CornChatbot()
+            context = {
+                "variety": detected_variety,
+                "grade": grading.get("grade", "N/A"),
+                "quality_score": features.get("quality_score", 0.0),
+                "healthy_percentage": features.get("healthy_percentage", 0.0),
+                "disease_percentage": features.get("disease_percentage", 0.0),
+                "missing_percentage": features.get("missing_percentage", 0.0),
+                "shelf_life_days": shelf_life,
+                "risk_level": risk_level,
+                "temperature_c": temperature,
+                "humidity_pct": humidity,
+                "storage_type": storage_type,
+                "summary": grading.get("description", "")
+            }
+            assistant_reply = chatbot.ask(assistant_query, analysis_context=context)
+        except Exception as e:
+            logger.warning(f"Chatbot failed to generate reply: {e}")
+            assistant_reply = f"Assessment complete. Classified as {grading.get('grade', 'N/A')} ({detected_variety})."
+
+    # 6. Report Generation
     pdf_path = global_config.reports_dir / f"{image_path.stem}_quality_report.pdf"
     PDFReportGenerator.generate(
         image_path=image_path,
@@ -93,7 +121,9 @@ def run_pipeline(
         "overlay_image": overlay_path,
         "features": features,
         "grading": grading,
-        "storage": storage_results
+        "storage": storage_results,
+        "variety": detected_variety,
+        "assistant_reply": assistant_reply
     }
 
 def main():

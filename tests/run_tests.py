@@ -164,8 +164,11 @@ def test_clean_prediction_mask():
     clean_mask, variety = clean_prediction_mask(dummy_img, raw_mask, probs=probs, corn_variety="auto")
     assert np.any(clean_mask == 3), "Diseased pixels were erroneously suppressed!"
     assert np.any(clean_mask == 1), "Healthy pixels missing from clean mask!"
-    assert "Dent" in variety or "Flint" in variety, f"Invalid variety string: {variety}"
+    VALID_VARIETY_KEYWORDS = ["Dent", "Flint", "Sweet", "Popcorn", "Blue", "Black", "Hopi"]
+    assert any(kw in variety for kw in VALID_VARIETY_KEYWORDS), \
+        f"Invalid variety string: {variety}"
     print(f"[SUCCESS] test_clean_prediction_mask passed! (Variety: {variety})")
+
 
 def main():
     print("="*50)

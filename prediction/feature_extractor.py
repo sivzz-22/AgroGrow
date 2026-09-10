@@ -80,7 +80,8 @@ class CornFeatureExtractor:
             "bounding_box": bbox,  # (x, y, w, h)
             "num_healthy_blobs": num_healthy_blobs,
             "kernel_density_score": kernel_density,
-            "quality_score": quality_score
+            "quality_score": quality_score,
+            "no_corn_detected": (total_corn_pixels == 0)
         }
         
         logger.debug(f"Extracted features: Healthy: {healthy_pct:.2f}%, "

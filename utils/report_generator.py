@@ -170,19 +170,13 @@ class PDFReportGenerator:
         storage_header = Paragraph("Storage Stability Projection", section_style)
         
         # Build features table
-        healthy_pct = features.get('healthy_percentage', 0.0)
-        disease_pct = features.get('disease_percentage', 0.0)
-        missing_pct = features.get('missing_percentage', 0.0)
-        total_px    = features.get('total_corn_area_pixels', 0)
-        q_score     = features.get('quality_score', 0.0)
-
         feat_data = [
             [Paragraph("<b>Metric Name</b>", body_bold_style), Paragraph("<b>Value</b>", body_bold_style)],
-            [Paragraph("Quality Score", body_bold_style), Paragraph(f"<b>{q_score:.1f} / 100</b>", body_bold_style)],
-            [Paragraph("Healthy Kernel Ratio", body_style), Paragraph(f"{healthy_pct:.2f}%", body_style)],
-            [Paragraph("Diseased Kernel Ratio", body_style), Paragraph(f"{disease_pct:.2f}%", body_style)],
-            [Paragraph("Missing Kernel Ratio", body_style), Paragraph(f"{missing_pct:.2f}%", body_style)],
-            [Paragraph("Total Corn Cob Area", body_style), Paragraph(f"{total_px} px", body_style)],
+            [Paragraph("Healthy Kernel Ratio", body_style), Paragraph(f"{features['healthy_percentage']:.2f}%", body_style)],
+            [Paragraph("Diseased Kernel Ratio", body_style), Paragraph(f"{features['disease_percentage']:.2f}%", body_style)],
+            [Paragraph("Missing Kernel Ratio", body_style), Paragraph(f"{features['missing_percentage']:.2f}%", body_style)],
+            [Paragraph("Total Corn Cob Area", body_style), Paragraph(f"{features['total_corn_area_pixels']} px", body_style)],
+            [Paragraph("Kernel Density Score", body_style), Paragraph(f"{features['kernel_density_score']:.3f}", body_style)],
         ]
         feat_table = Table(feat_data, colWidths=[2.2*inch, 1.2*inch])
         feat_table.setStyle(TableStyle([
