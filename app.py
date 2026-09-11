@@ -379,6 +379,10 @@ for key, default in {
     if key not in st.session_state:
         st.session_state[key] = default
 
+# Ensure chat_context is always defined globally to prevent NameError
+chat_context = None
+use_device = None
+
 # ── Init chatbot ──────────────────────────────────────────────────────────────
 @st.cache_resource
 def get_chatbot():
@@ -421,33 +425,65 @@ with st.sidebar:
         help="Select manually for unusual varieties to prevent misclassification of pigmentation as disease."
     )
 
-    st.markdown("---")
-    st.markdown("### ⚙️ Model Configuration")
-    has_cuda = torch.cuda.is_available()
-    device_options = ["Auto (GPU if available)", "CPU (Safe Mode)"] if has_cuda else ["CPU (Safe Mode)"]
-    device_choice = st.selectbox("Inference Hardware", device_options, index=0)
-    use_device = "cpu" if "CPU" in device_choice else None
+    # Health status card in sidebar
+    if st.session_state.current_analysis is not None:
+        st.markdown("---")
+        st.markdown("### 🩺 Batch Health Status")
+        _sb_res = st.session_state.current_analysis
+        _sb_f = _sb_res["features"]
+        _sb_g = _sb_res["grading"]
+        _sb_no_corn = _sb_f.get("no_corn_detected", False)
+        _sb_q = _sb_f["quality_score"]
+        _sb_d = _sb_f["disease_percentage"]
 
-    mode_label = "🟢 GPU Accelerated" if (has_cuda and use_device != "cpu") else "🔵 CPU Mode"
-    st.info(f"**Active Mode:** {mode_label}")
-
-    weights_file = global_config.weights_dir / "best_model.pth"
-    if weights_file.exists():
-        st.success("✅ Model Weights Loaded")
-    else:
-        st.warning("⚠️ No weights — train first")
-
-    st.markdown("---")
-    st.markdown("### 💬 AgrowGrow Status")
-    if chatbot.is_ai_powered:
-        st.success("🤖 Gemini AI Powered")
-    else:
-        import os
-        key = os.getenv("GEMINI_API_KEY", "")
-        if key:
-            st.error("❌ Gemini key set but init failed")
+        if _sb_no_corn:
+            st.markdown("""
+            <div style='background:#f1f5f9;border:1.5px solid #94a3b8;border-radius:12px;padding:14px;'>
+                <div style='font-size:22px;'>🔍</div>
+                <div style='font-weight:700;color:#334155;margin-top:4px;'>No Corn Detected</div>
+                <div style='font-size:12px;color:#64748b;margin-top:2px;'>
+                    No valid corn ear was found in this photo. Please upload a clear corn image.
+                </div>
+            </div>""", unsafe_allow_html=True)
+        elif _sb_q >= 75 and _sb_d < 5.0:
+            st.markdown(f"""
+            <div style='background:#f0fdf4;border:1.5px solid #16a34a;border-radius:12px;padding:14px;'>
+                <div style='font-size:22px;'>✅</div>
+                <div style='font-weight:700;color:#166534;margin-top:4px;font-size:15px;'>Corn is Healthy</div>
+                <div style='font-size:12px;color:#15803d;margin-top:3px;'>
+                    Score: <strong>{_sb_q:.1f}/100</strong><br>
+                    Disease: <strong>{_sb_d:.1f}%</strong> (Safe)
+                </div>
+                <div style='font-size:13px;color:#166534;margin-top:6px;font-weight:700;'>
+                    Grade: {_sb_g['grade']}
+                </div>
+            </div>""", unsafe_allow_html=True)
+        elif _sb_q >= 45 and _sb_d < 20.0:
+            st.markdown(f"""
+            <div style='background:#fffbeb;border:1.5px solid #d97706;border-radius:12px;padding:14px;'>
+                <div style='font-size:22px;'>⚠️</div>
+                <div style='font-weight:700;color:#92400e;margin-top:4px;font-size:15px;'>Moderate Defects</div>
+                <div style='font-size:12px;color:#b45309;margin-top:3px;'>
+                    Score: <strong>{_sb_q:.1f}/100</strong><br>
+                    Disease: <strong>{_sb_d:.1f}%</strong>
+                </div>
+                <div style='font-size:13px;color:#92400e;margin-top:6px;font-weight:700;'>
+                    Grade: {_sb_g['grade']}
+                </div>
+            </div>""", unsafe_allow_html=True)
         else:
-            st.info("ℹ️ Rule-based mode\nSet `GEMINI_API_KEY` for AI-powered chatbot")
+            st.markdown(f"""
+            <div style='background:#fff1f2;border:1.5px solid #dc2626;border-radius:12px;padding:14px;'>
+                <div style='font-size:22px;'>❌</div>
+                <div style='font-weight:700;color:#991b1b;margin-top:4px;font-size:15px;'>Severe Defects</div>
+                <div style='font-size:12px;color:#b91c1c;margin-top:3px;'>
+                    Score: <strong>{_sb_q:.1f}/100</strong><br>
+                    Disease: <strong>{_sb_d:.1f}%</strong>
+                </div>
+                <div style='font-size:13px;color:#991b1b;margin-top:6px;font-weight:700;'>
+                    Grade: {_sb_g['grade']}
+                </div>
+            </div>""", unsafe_allow_html=True)
 
 # ── Animated Header ───────────────────────────────────────────────────────────
 st.markdown("""
@@ -496,27 +532,19 @@ if uploaded_file is not None:
     _is_full = (_aw >= _W * 0.95 and _ah >= _H * 0.95)
 
     # ── Framing mode ─────────────────────────────────────────────────────────
-    st.markdown("#### ✂️ Cob Framing Mode")
-    f_col1, f_col2 = st.columns([1, 2])
-    with f_col1:
-        crop_mode = st.radio(
-            "Select framing:",
-            options=["🌽 Auto Crop Ear", "🖐 Manual Crop", "📷 Full Image"],
-            index=0, horizontal=True, label_visibility="collapsed"
-        )
+    st.markdown("<p style='font-size:14px;font-weight:700;color:#1e293b;margin:14px 0 6px 0;'>✂️ Cob Framing Mode</p>", unsafe_allow_html=True)
+    crop_mode = st.segmented_control(
+        "Cob Framing Mode",
+        options=["🌽 Auto Crop Ear", "🖐 Manual Crop", "📷 Full Image"],
+        default=st.session_state.get("last_crop_mode", "🌽 Auto Crop Ear"),
+        label_visibility="collapsed"
+    )
+    if not crop_mode:
+        crop_mode = "🌽 Auto Crop Ear"
+
     if st.session_state.get("last_crop_mode") != crop_mode:
         st.session_state.last_crop_mode = crop_mode
         st.session_state.current_analysis = None
-    with f_col2:
-        if crop_mode == "🌽 Auto Crop Ear":
-            if _is_full:
-                st.info("ℹ️ Full image — no crop needed.")
-            else:
-                st.success(f"✅ Ear auto-detected ({_aw}×{_ah} px).")
-        elif crop_mode == "🖐 Manual Crop":
-            st.info("💡 Adjust boundary sliders below.")
-        else:
-            st.info("📷 Full image with background suppression.")
 
     # ── Determine inference image ─────────────────────────────────────────────
     if crop_mode == "🌽 Auto Crop Ear":
@@ -652,63 +680,15 @@ if uploaded_file is not None:
         s   = res["storage"]
         variety_name = res.get("variety", "Commercial Dent Corn (Zea mays indentata)")
 
+        # Build chatbot context from current results
+        chat_context = {
+            **f,
+            **g,
+            **s,
+            "variety": variety_name
+        }
+
         st.divider()
-
-        # ── Health Status Notification Banner ────────────────────────────────
-        no_corn      = f.get("no_corn_detected", False)
-        quality_sc   = f["quality_score"]
-        disease_pct  = f["disease_percentage"]
-
-        if no_corn:
-            st.markdown("""
-            <div class='health-banner health-banner-nocorn'>
-                <div class='health-icon'>🔍</div>
-                <div>
-                    <div class='health-title' style='color:#475569;'>No Corn Detected</div>
-                    <div class='health-desc' style='color:#64748b;'>
-                        The model could not find any corn kernels in this image.
-                        Please upload a clear, close-up photograph of a corn cob.
-                    </div>
-                </div>
-            </div>""", unsafe_allow_html=True)
-        elif quality_sc >= 75 and disease_pct < 5.0:
-            st.markdown(f"""
-            <div class='health-banner health-banner-healthy'>
-                <div class='health-icon'>✅</div>
-                <div>
-                    <div class='health-title' style='color:#166534;'>Corn is Healthy — Excellent Condition</div>
-                    <div class='health-desc' style='color:#15803d;'>
-                        Quality Score {quality_sc:.1f}/100 · Disease level {disease_pct:.1f}% (well within safe limits)
-                        · Classified as <strong>{g["grade"]}</strong>
-                    </div>
-                </div>
-            </div>""", unsafe_allow_html=True)
-        elif quality_sc >= 45 and disease_pct < 20.0:
-            st.markdown(f"""
-            <div class='health-banner health-banner-warning'>
-                <div class='health-icon'>⚠️</div>
-                <div>
-                    <div class='health-title' style='color:#92400e;'>Moderate Issues Detected</div>
-                    <div class='health-desc' style='color:#b45309;'>
-                        Quality Score {quality_sc:.1f}/100 · Disease level {disease_pct:.1f}%
-                        · Classified as <strong>{g["grade"]}</strong>
-                        · Monitor storage conditions closely.
-                    </div>
-                </div>
-            </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div class='health-banner health-banner-danger'>
-                <div class='health-icon'>❌</div>
-                <div>
-                    <div class='health-title' style='color:#991b1b;'>Severe Disease / Defects Detected</div>
-                    <div class='health-desc' style='color:#b91c1c;'>
-                        Quality Score {quality_sc:.1f}/100 · Disease level {disease_pct:.1f}%
-                        · Classified as <strong>{g["grade"]}</strong>
-                        · Immediate action required — inspect for mycotoxins.
-                    </div>
-                </div>
-            </div>""", unsafe_allow_html=True)
 
         # Variety chip
         var_emoji = "🌽"
@@ -722,157 +702,78 @@ if uploaded_file is not None:
             var_emoji = "🔵"
 
         st.markdown(f"""
-        <div class='variety-chip'>
-            <span style='font-size:20px;'>{var_emoji}</span>
+        <div class='variety-chip' style='margin-bottom:20px;'>
+            <span style='font-size:22px;'>{var_emoji}</span>
             <span><strong>Detected Variety:</strong> {variety_name}</span>
         </div>""", unsafe_allow_html=True)
 
-        # ── Section 1: Overlay + Legend ───────────────────────────────────────
-        st.markdown("<p class='section-hdr'>🎨 Segmentation Overlay</p>", unsafe_allow_html=True)
-        ov1, ov2 = st.columns([1.4, 1])
-        with ov1:
-            st.image(str(res["overlay_path"]), use_container_width=True,
-                     caption="CornNet semantic segmentation — natural photo blend")
-        with ov2:
+        # ── Main Result Grid: Side-by-Side Overlay + Storage Analysis ───────────
+        res_col_left, res_col_right = st.columns([1.15, 1], gap="large")
+
+        with res_col_left:
+            st.markdown("<p class='section-hdr'>🎨 Segmentation Overlay</p>", unsafe_allow_html=True)
+            st.image(str(res["overlay_path"]), use_container_width=True)
+
+            # Small, basic, clean inline color legend
             st.markdown("""
-            <div class='legend-card'>
-                <p style='font-size:13px;font-weight:700;color:#1e293b;margin:0 0 18px 0;'>Colour Legend</p>
-                <div class='legend-row'>
-                    <div class='legend-dot' style='background:#00CC00;'></div>
-                    <div>
-                        <div style='font-size:13px;font-weight:600;color:#334155;'>Healthy Kernels</div>
-                        <div style='font-size:11px;color:#94a3b8;'>Fully formed, disease-free kernels</div>
-                    </div>
-                </div>
-                <div class='legend-row'>
-                    <div class='legend-dot' style='background:#0066FF;'></div>
-                    <div>
-                        <div style='font-size:13px;font-weight:600;color:#334155;'>Missing Kernel Sockets</div>
-                        <div style='font-size:11px;color:#94a3b8;'>Empty slots / kernel loss</div>
-                    </div>
-                </div>
-                <div class='legend-row'>
-                    <div class='legend-dot' style='background:#FF2222;'></div>
-                    <div>
-                        <div style='font-size:13px;font-weight:600;color:#334155;'>Diseased / Rotten Kernels</div>
-                        <div style='font-size:11px;color:#94a3b8;'>Fungal rot, mould, necrosis</div>
-                    </div>
-                </div>
-                <div style='height:1px;background:#e2e8f0;margin:14px 0;'></div>
-                <p style='font-size:11px;color:#94a3b8;line-height:1.5;margin:0;'>
-                    Overlay blends class predictions at 55% opacity over the original photo.
-                    Background pixels remain uncoloured.
-                </p>
-            </div>""", unsafe_allow_html=True)
+            <div style='display:flex;gap:16px;justify-content:center;align-items:center;padding:9px 14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;margin-top:8px;font-size:12px;font-weight:600;color:#334155;'>
+                <span style='display:flex;align-items:center;gap:6px;'><span style='width:10px;height:10px;border-radius:50%;background:#00CC00;display:inline-block;'></span> Healthy</span>
+                <span style='display:flex;align-items:center;gap:6px;'><span style='width:10px;height:10px;border-radius:50%;background:#0066FF;display:inline-block;'></span> Missing</span>
+                <span style='display:flex;align-items:center;gap:6px;'><span style='width:10px;height:10px;border-radius:50%;background:#FF2222;display:inline-block;'></span> Diseased</span>
+            </div>
+            """, unsafe_allow_html=True)
 
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        with res_col_right:
+            st.markdown("<p class='section-hdr'>🏭 Storage & Quality Analysis</p>", unsafe_allow_html=True)
 
-        # ── Section 2: KPI Cards ──────────────────────────────────────────────
-        st.markdown("<p class='section-hdr'>📊 Quality Metrics</p>", unsafe_allow_html=True)
+            grade_text  = g["grade"]
+            raw_conf    = g["confidence"]
+            conf_pct    = raw_conf * 100.0 if raw_conf <= 1.0 else raw_conf
+            grade_ltr   = grade_text.replace("Grade ", "") if "Grade" in grade_text else "D"
+            risk_col    = ("#16a34a" if "Low" in s["risk_level"] else
+                           ("#d97706" if "Medium" in s["risk_level"] else "#dc2626"))
 
-        grade_text  = g["grade"]
-        raw_conf    = g["confidence"]
-        conf_pct    = raw_conf * 100.0 if raw_conf <= 1.0 else raw_conf
-        grade_ltr   = grade_text.replace("Grade ", "") if "Grade" in grade_text else "D"
-        risk_col    = ("#16a34a" if "Low" in s["risk_level"] else
-                       ("#d97706" if "Medium" in s["risk_level"] else "#dc2626"))
-
-        kc1, kc2, kc3, kc4 = st.columns(4)
-        with kc1:
-            st.markdown(f"""
-            <div class='kpi-card' style='border-top-color:#3b82f6;animation-delay:0s;'>
-                <div class='kpi-label'>Quality Grade</div>
-                <div class='kpi-value'>{grade_text}</div>
-                <span class='grade-badge grade-{grade_ltr}'>{conf_pct:.1f}% conf.</span>
-            </div>""", unsafe_allow_html=True)
-        with kc2:
-            st.markdown(f"""
-            <div class='kpi-card' style='border-top-color:#22c55e;animation-delay:0.07s;'>
-                <div class='kpi-label'>Quality Score</div>
-                <div class='kpi-value'>{f["quality_score"]:.1f}<span style='font-size:16px;font-weight:400;color:#94a3b8;'>/100</span></div>
-                <div class='kpi-sub'>Healthy: {f["healthy_percentage"]:.1f}%</div>
-            </div>""", unsafe_allow_html=True)
-        with kc3:
-            st.markdown(f"""
-            <div class='kpi-card' style='border-top-color:#f59e0b;animation-delay:0.14s;'>
-                <div class='kpi-label'>Estimated Shelf Life</div>
-                <div class='kpi-value'>{s["shelf_life_days"]:.0f}<span style='font-size:16px;font-weight:400;color:#94a3b8;'> days</span></div>
-                <div class='kpi-sub'>{s["temperature_c"]}°C · {s["humidity_pct"]}% RH</div>
-            </div>""", unsafe_allow_html=True)
-        with kc4:
-            st.markdown(f"""
-            <div class='kpi-card' style='border-top-color:{risk_col};animation-delay:0.21s;'>
-                <div class='kpi-label'>Storage Risk</div>
-                <div class='kpi-value' style='color:{risk_col};font-size:22px;'>{s["risk_level"]}</div>
-                <div class='kpi-sub'>{s["storage_type"]}</div>
-            </div>""", unsafe_allow_html=True)
-
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        st.divider()
-
-        # ── Section 3: Kernel composition + Storage ───────────────────────────
-        dc1, dc2 = st.columns(2)
-
-        with dc1:
-            st.markdown("<p class='section-hdr'>🌱 Kernel Composition</p>", unsafe_allow_html=True)
-
-            def pbar(label, val, color, icon):
-                bw = max(0.5, min(float(val), 100))
+            # Top KPI scorecards
+            kp1, kp2 = st.columns(2)
+            with kp1:
                 st.markdown(f"""
-                <div class='pbar-wrap'>
-                    <div class='pbar-meta'>
-                        <span>{icon} {label}</span>
-                        <span style='font-weight:700;color:#0f172a;'>{val:.2f}%</span>
-                    </div>
-                    <div class='pbar-track'>
-                        <div class='pbar-fill' style='width:{bw}%;background:{color};'></div>
-                    </div>
+                <div class='kpi-card' style='border-top-color:#3b82f6;padding:16px 14px;'>
+                    <div class='kpi-label'>Quality Grade</div>
+                    <div class='kpi-value' style='font-size:26px;'>{grade_text}</div>
+                    <span class='grade-badge grade-{grade_ltr}'>{conf_pct:.1f}% conf.</span>
+                </div>""", unsafe_allow_html=True)
+            with kp2:
+                st.markdown(f"""
+                <div class='kpi-card' style='border-top-color:{risk_col};padding:16px 14px;'>
+                    <div class='kpi-label'>Predicted Shelf Life</div>
+                    <div class='kpi-value' style='font-size:26px;color:{risk_col};'>{s["shelf_life_days"]:.0f}<span style='font-size:14px;font-weight:400;color:#64748b;'> days</span></div>
+                    <div class='kpi-sub' style='color:{risk_col};font-weight:600;'>{s["risk_level"]}</div>
                 </div>""", unsafe_allow_html=True)
 
-            pbar("Healthy Kernels",  f["healthy_percentage"],  "#22c55e", "🟢")
-            pbar("Missing Kernels",  f["missing_percentage"],  "#3b82f6", "🔵")
-            pbar("Diseased Kernels", f["disease_percentage"],  "#ef4444", "🔴")
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <div style='margin-top:16px;padding:14px 16px;background:#f8fafc;border-radius:12px;
-                        border:1px solid #e2e8f0;'>
-                <div style='font-size:12px;color:#64748b;font-weight:600;'>Healthy Kernel Blobs</div>
-                <div style='font-size:22px;font-weight:800;color:#0f172a;margin-top:2px;'>
-                    {f["num_healthy_blobs"]}
-                    <span style='font-size:13px;font-weight:400;color:#94a3b8;'> healthy regions</span>
-                </div>
-            </div>""", unsafe_allow_html=True)
-
-        with dc2:
-            st.markdown("<p class='section-hdr'>🏭 Storage Analysis</p>", unsafe_allow_html=True)
+            # Storage Grid Card
             st.markdown(f"""
             <div class='st-card'>
-                <div class='st-row'><span class='st-key'>Storage Mode</span><span class='st-val'>{s["storage_type"]}</span></div>
-                <div class='st-row'><span class='st-key'>Temperature</span><span class='st-val'>{s["temperature_c"]} °C</span></div>
-                <div class='st-row'><span class='st-key'>Humidity</span><span class='st-val'>{s["humidity_pct"]} % RH</span></div>
-                <div class='st-row'><span class='st-key'>Predicted Shelf Life</span>
-                    <span class='st-val' style='color:{risk_col};'>{s["shelf_life_days"]:.0f} days</span></div>
-                <div class='st-row'><span class='st-key'>Risk Category</span>
-                    <span class='st-val' style='color:{risk_col};'>{s["risk_level"]}</span></div>
-                <div class='st-row' style='border-bottom:none;'>
-                    <span class='st-key'>Quality Grade</span><span class='st-val'>{grade_text}</span></div>
+                <div class='st-row'><span class='st-key'>Quality Score</span><span class='st-val'>{f['quality_score']:.1f} / 100</span></div>
+                <div class='st-row'><span class='st-key'>Storage Container</span><span class='st-val'>{s["storage_type"]}</span></div>
+                <div class='st-row'><span class='st-key'>Storage Temperature</span><span class='st-val'>{s["temperature_c"]} °C</span></div>
+                <div class='st-row'><span class='st-key'>Relative Humidity</span><span class='st-val'>{s["humidity_pct"]} % RH</span></div>
+                <div class='st-row' style='border-bottom:none;'><span class='st-key'>Storage Risk Status</span><span class='st-val' style='color:{risk_col};'>{s["risk_level"]}</span></div>
             </div>""", unsafe_allow_html=True)
 
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-        # Grade summary + Recommendation
-        sc1, sc2 = st.columns(2)
-        with sc1:
-            st.markdown("<p class='section-hdr'>📋 Grade Summary</p>", unsafe_allow_html=True)
+            # Storage Recommendation box
+            st.markdown(f"<div class='rec-box'>💡 <strong>Storage Recommendation:</strong><br>{s['recommendation']}</div>", unsafe_allow_html=True)
+
+            # Grade Summary
             st.markdown(f"""
-            <div style='padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;
-                        font-size:13px;color:#334155;line-height:1.65;'>
-                {g["summary"]}
+            <div style='padding:12px 14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;font-size:12px;color:#334155;line-height:1.55;'>
+                📋 <strong>Quality Summary:</strong> {g["summary"]}
             </div>""", unsafe_allow_html=True)
-        with sc2:
-            st.markdown("<p class='section-hdr'>💡 Storage Recommendation</p>", unsafe_allow_html=True)
-            st.markdown(f"<div class='rec-box'>{s['recommendation']}</div>", unsafe_allow_html=True)
 
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
         st.divider()
 
         # ── Section 4: PDF Report ──────────────────────────────────────────────
@@ -881,8 +782,8 @@ if uploaded_file is not None:
         with pc1:
             st.markdown("""
             <div style='font-size:13px;color:#64748b;line-height:1.65;padding:8px 0;'>
-                Download a formatted PDF containing the segmentation overlay, kernel metrics,
-                storage projection, and grade classification for this batch.
+                Download a formatted PDF certificate containing the segmentation overlay,
+                storage projections, and official classification grade for this batch.
             </div>""", unsafe_allow_html=True)
         with pc2:
             report_name = f"{img_path.stem}_quality_report.pdf"
@@ -915,15 +816,6 @@ if uploaded_file is not None:
                          use_container_width=True, hide_index=True)
         else:
             st.caption("No assessments run yet.")
-
-        # ── Floating Chatbot ──────────────────────────────────────────────────
-        # Build chatbot context from current results
-        chat_context = {
-            **f,
-            **g,
-            **s,
-            "variety": variety_name
-        }
 
 else:
     # ── Disabled Run Button for Initial Clarity ──────────────────────────────
