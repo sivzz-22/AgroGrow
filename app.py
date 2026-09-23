@@ -477,7 +477,7 @@ if uploaded_file is not None:
     st.markdown("<p style='font-size:14px;font-weight:700;color:#1e293b;margin:14px 0 6px 0;'>✂️ Cob Framing Mode</p>", unsafe_allow_html=True)
     crop_mode = st.segmented_control(
         "Cob Framing Mode",
-        options=["🌽 Auto Crop Ear", "🖐 Manual Crop", "📷 Full Image"],
+        options=["🌽 Auto Crop Ear", "📷 Full Image"],
         default=st.session_state.get("last_crop_mode", "🌽 Auto Crop Ear"),
         label_visibility="collapsed"
     )
@@ -494,40 +494,6 @@ if uploaded_file is not None:
             _target_crop = _raw_rgb[:, int(_W * 0.10):int(_W * 0.50)]
         else:
             _target_crop = _auto_cropped
-        _c = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-        cv2.imwrite(_c.name, cv2.cvtColor(_target_crop, cv2.COLOR_RGB2BGR))
-        _c.close()
-        inference_img_path = Path(_c.name)
-
-    elif crop_mode == "🖐 Manual Crop":
-        with st.expander("🛠️ Manual Framing Controls", expanded=True):
-            p1, p2, p3, p4 = st.columns(4)
-            if p1.button("🎯 Center Cob", key="btn_center"):
-                st.session_state.update(mc_x1=int(_W*0.25), mc_x2=int(_W*0.48),
-                                        mc_y1=int(_H*0.05), mc_y2=int(_H*0.95))
-            if p2.button("🌽 Left Cob", key="btn_left"):
-                st.session_state.update(mc_x1=int(_W*0.10), mc_x2=int(_W*0.35),
-                                        mc_y1=int(_H*0.05), mc_y2=int(_H*0.95))
-            if p3.button("🌾 Both Cobs", key="btn_both"):
-                st.session_state.update(mc_x1=int(_W*0.10), mc_x2=int(_W*0.50),
-                                        mc_y1=int(_H*0.05), mc_y2=int(_H*0.95))
-            if p4.button("🔄 Reset", key="btn_full"):
-                st.session_state.update(mc_x1=0, mc_x2=_W, mc_y1=0, mc_y2=_H)
-
-            i_x1 = st.session_state.get("mc_x1", int(_W*0.22) if _is_full else max(0, _ax))
-            i_x2 = st.session_state.get("mc_x2", int(_W*0.49) if _is_full else min(_W, _ax+_aw))
-            i_y1 = st.session_state.get("mc_y1", int(_H*0.05) if _is_full else max(0, _ay))
-            i_y2 = st.session_state.get("mc_y2", int(_H*0.95) if _is_full else min(_H, _ay+_ah))
-
-            s1, s2 = st.columns(2)
-            with s1:
-                cx1 = st.slider("Left", 0, _W-10, i_x1, key="slider_x1")
-                cx2 = st.slider("Right", cx1+10, _W, max(cx1+10, i_x2), key="slider_x2")
-            with s2:
-                cy1 = st.slider("Top", 0, _H-10, i_y1, key="slider_y1")
-                cy2 = st.slider("Bottom", cy1+10, _H, max(cy1+10, i_y2), key="slider_y2")
-
-        _target_crop = _raw_rgb[cy1:cy2, cx1:cx2]
         _c = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         cv2.imwrite(_c.name, cv2.cvtColor(_target_crop, cv2.COLOR_RGB2BGR))
         _c.close()
