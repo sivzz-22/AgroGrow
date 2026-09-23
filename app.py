@@ -52,13 +52,169 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Global CSS ────────────────────────────────────────────────────────────────
+# ── Global CSS (Dual-Theme: Light & Dark Adaptive) ───────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
+}
+
+/* ── Theme Adaptive Variables (Supports Light & Dark Modes) ── */
+:root {
+    --ag-bg-card: rgba(255, 255, 255, 0.90);
+    --ag-bg-surface: #f8fafc;
+    --ag-bg-subtle: #f1f5f9;
+    --ag-border: #e2e8f0;
+    --ag-border-subtle: #f1f5f9;
+    --ag-text-primary: #0f172a;
+    --ag-text-secondary: #334155;
+    --ag-text-muted: #64748b;
+    --ag-text-faint: #94a3b8;
+    --ag-popover-bg: #ffffff;
+    --ag-popover-border: #cbd5e1;
+    --ag-pbar-track: #f1f5f9;
+    
+    --ag-variety-bg: #f0fdf4;
+    --ag-variety-border: #16a34a;
+    --ag-variety-text: #166534;
+    
+    --ag-rec-bg: #fffbeb;
+    --ag-rec-border: #fde68a;
+    --ag-rec-text: #92400e;
+    
+    --ag-empty-bg: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    --ag-empty-border: #cbd5e1;
+
+    --ag-hb-healthy-bg: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    --ag-hb-healthy-border: #16a34a;
+    --ag-hb-healthy-title: #166534;
+    --ag-hb-healthy-desc: #15803d;
+    --ag-hb-healthy-shadow: rgba(22, 163, 74, 0.12);
+
+    --ag-hb-warning-bg: linear-gradient(135deg, #fffbeb, #fef9c3);
+    --ag-hb-warning-border: #d97706;
+    --ag-hb-warning-title: #92400e;
+    --ag-hb-warning-desc: #b45309;
+    --ag-hb-warning-shadow: rgba(217, 119, 6, 0.12);
+
+    --ag-hb-danger-bg: linear-gradient(135deg, #fff1f2, #fde8e8);
+    --ag-hb-danger-border: #dc2626;
+    --ag-hb-danger-title: #991b1b;
+    --ag-hb-danger-desc: #b91c1c;
+    --ag-hb-danger-shadow: rgba(220, 38, 38, 0.12);
+
+    --ag-hb-nocorn-bg: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    --ag-hb-nocorn-border: #64748b;
+    --ag-hb-nocorn-title: #334155;
+    --ag-hb-nocorn-desc: #475569;
+    --ag-hb-nocorn-shadow: rgba(100, 116, 139, 0.10);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ag-bg-card: rgba(30, 41, 59, 0.85);
+        --ag-bg-surface: #1e293b;
+        --ag-bg-subtle: #0f172a;
+        --ag-border: rgba(255, 255, 255, 0.12);
+        --ag-border-subtle: rgba(255, 255, 255, 0.08);
+        --ag-text-primary: #f8fafc;
+        --ag-text-secondary: #e2e8f0;
+        --ag-text-muted: #94a3b8;
+        --ag-text-faint: #64748b;
+        --ag-popover-bg: #0f172a;
+        --ag-popover-border: #334155;
+        --ag-pbar-track: #334155;
+        
+        --ag-variety-bg: rgba(22, 101, 52, 0.30);
+        --ag-variety-border: #22c55e;
+        --ag-variety-text: #86efac;
+        
+        --ag-rec-bg: rgba(180, 83, 9, 0.20);
+        --ag-rec-border: rgba(245, 158, 11, 0.40);
+        --ag-rec-text: #fde68a;
+        
+        --ag-empty-bg: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
+        --ag-empty-border: #334155;
+
+        --ag-hb-healthy-bg: linear-gradient(135deg, rgba(22, 101, 52, 0.35), rgba(20, 83, 45, 0.50));
+        --ag-hb-healthy-border: #22c55e;
+        --ag-hb-healthy-title: #86efac;
+        --ag-hb-healthy-desc: #bbf7d0;
+        --ag-hb-healthy-shadow: rgba(34, 197, 94, 0.20);
+
+        --ag-hb-warning-bg: linear-gradient(135deg, rgba(161, 98, 7, 0.35), rgba(133, 77, 14, 0.50));
+        --ag-hb-warning-border: #f59e0b;
+        --ag-hb-warning-title: #fde68a;
+        --ag-hb-warning-desc: #fef08a;
+        --ag-hb-warning-shadow: rgba(245, 158, 11, 0.20);
+
+        --ag-hb-danger-bg: linear-gradient(135deg, rgba(185, 28, 28, 0.35), rgba(153, 27, 27, 0.50));
+        --ag-hb-danger-border: #ef4444;
+        --ag-hb-danger-title: #fca5a5;
+        --ag-hb-danger-desc: #fecaca;
+        --ag-hb-danger-shadow: rgba(239, 68, 68, 0.20);
+
+        --ag-hb-nocorn-bg: linear-gradient(135deg, rgba(51, 65, 85, 0.40), rgba(30, 41, 59, 0.60));
+        --ag-hb-nocorn-border: #94a3b8;
+        --ag-hb-nocorn-title: #f1f5f9;
+        --ag-hb-nocorn-desc: #cbd5e1;
+        --ag-hb-nocorn-shadow: rgba(148, 163, 184, 0.15);
+    }
+}
+
+/* Also support Streamlit user explicitly toggling Dark Mode in Streamlit Settings */
+[data-theme="dark"],
+.stApp[data-theme="dark"],
+body[data-theme="dark"] {
+    --ag-bg-card: rgba(30, 41, 59, 0.85);
+    --ag-bg-surface: #1e293b;
+    --ag-bg-subtle: #0f172a;
+    --ag-border: rgba(255, 255, 255, 0.12);
+    --ag-border-subtle: rgba(255, 255, 255, 0.08);
+    --ag-text-primary: #f8fafc;
+    --ag-text-secondary: #e2e8f0;
+    --ag-text-muted: #94a3b8;
+    --ag-text-faint: #64748b;
+    --ag-popover-bg: #0f172a;
+    --ag-popover-border: #334155;
+    --ag-pbar-track: #334155;
+    
+    --ag-variety-bg: rgba(22, 101, 52, 0.30);
+    --ag-variety-border: #22c55e;
+    --ag-variety-text: #86efac;
+    
+    --ag-rec-bg: rgba(180, 83, 9, 0.20);
+    --ag-rec-border: rgba(245, 158, 11, 0.40);
+    --ag-rec-text: #fde68a;
+    
+    --ag-empty-bg: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
+    --ag-empty-border: #334155;
+
+    --ag-hb-healthy-bg: linear-gradient(135deg, rgba(22, 101, 52, 0.35), rgba(20, 83, 45, 0.50));
+    --ag-hb-healthy-border: #22c55e;
+    --ag-hb-healthy-title: #86efac;
+    --ag-hb-healthy-desc: #bbf7d0;
+    --ag-hb-healthy-shadow: rgba(34, 197, 94, 0.20);
+
+    --ag-hb-warning-bg: linear-gradient(135deg, rgba(161, 98, 7, 0.35), rgba(133, 77, 14, 0.50));
+    --ag-hb-warning-border: #f59e0b;
+    --ag-hb-warning-title: #fde68a;
+    --ag-hb-warning-desc: #fef08a;
+    --ag-hb-warning-shadow: rgba(245, 158, 11, 0.20);
+
+    --ag-hb-danger-bg: linear-gradient(135deg, rgba(185, 28, 28, 0.35), rgba(153, 27, 27, 0.50));
+    --ag-hb-danger-border: #ef4444;
+    --ag-hb-danger-title: #fca5a5;
+    --ag-hb-danger-desc: #fecaca;
+    --ag-hb-danger-shadow: rgba(239, 68, 68, 0.20);
+
+    --ag-hb-nocorn-bg: linear-gradient(135deg, rgba(51, 65, 85, 0.40), rgba(30, 41, 59, 0.60));
+    --ag-hb-nocorn-border: #94a3b8;
+    --ag-hb-nocorn-title: #f1f5f9;
+    --ag-hb-nocorn-desc: #cbd5e1;
+    --ag-hb-nocorn-shadow: rgba(148, 163, 184, 0.15);
 }
 
 /* ── Animated gradient header ── */
@@ -93,13 +249,13 @@ html, body, [class*="css"] {
 .ag-title {
     font-size: 40px;
     font-weight: 800;
-    color: #ffffff;
+    color: #ffffff !important;
     margin: 0;
     letter-spacing: -0.5px;
     text-shadow: 0 2px 12px rgba(0,0,0,0.3);
 }
 .ag-subtitle {
-    color: rgba(255,255,255,0.8);
+    color: rgba(255,255,255,0.85) !important;
     font-size: 15px;
     margin: 8px 0 0 0;
     font-weight: 400;
@@ -111,7 +267,7 @@ html, body, [class*="css"] {
     border-radius: 999px;
     padding: 4px 16px;
     font-size: 12px;
-    color: rgba(255,255,255,0.9);
+    color: rgba(255,255,255,0.95) !important;
     font-weight: 600;
     margin-top: 14px;
     letter-spacing: 1px;
@@ -134,37 +290,49 @@ html, body, [class*="css"] {
     to   { opacity: 1; transform: translateY(0); }
 }
 .health-banner-healthy {
-    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-    border: 1.5px solid #16a34a;
-    box-shadow: 0 4px 20px rgba(22, 163, 74, 0.12);
+    background: var(--ag-hb-healthy-bg);
+    border: 1.5px solid var(--ag-hb-healthy-border);
+    box-shadow: 0 4px 20px var(--ag-hb-healthy-shadow);
 }
+.health-banner-healthy .health-title { color: var(--ag-hb-healthy-title) !important; }
+.health-banner-healthy .health-desc { color: var(--ag-hb-healthy-desc) !important; }
+
 .health-banner-warning {
-    background: linear-gradient(135deg, #fffbeb, #fef9c3);
-    border: 1.5px solid #d97706;
-    box-shadow: 0 4px 20px rgba(217, 119, 6, 0.12);
+    background: var(--ag-hb-warning-bg);
+    border: 1.5px solid var(--ag-hb-warning-border);
+    box-shadow: 0 4px 20px var(--ag-hb-warning-shadow);
 }
+.health-banner-warning .health-title { color: var(--ag-hb-warning-title) !important; }
+.health-banner-warning .health-desc { color: var(--ag-hb-warning-desc) !important; }
+
 .health-banner-danger {
-    background: linear-gradient(135deg, #fff1f2, #fde8e8);
-    border: 1.5px solid #dc2626;
-    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.12);
+    background: var(--ag-hb-danger-bg);
+    border: 1.5px solid var(--ag-hb-danger-border);
+    box-shadow: 0 4px 20px var(--ag-hb-danger-shadow);
 }
+.health-banner-danger .health-title { color: var(--ag-hb-danger-title) !important; }
+.health-banner-danger .health-desc { color: var(--ag-hb-danger-desc) !important; }
+
 .health-banner-nocorn {
-    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
-    border: 1.5px solid #64748b;
-    box-shadow: 0 4px 20px rgba(100, 116, 139, 0.1);
+    background: var(--ag-hb-nocorn-bg);
+    border: 1.5px solid var(--ag-hb-nocorn-border);
+    box-shadow: 0 4px 20px var(--ag-hb-nocorn-shadow);
 }
+.health-banner-nocorn .health-title { color: var(--ag-hb-nocorn-title) !important; }
+.health-banner-nocorn .health-desc { color: var(--ag-hb-nocorn-desc) !important; }
+
 .health-icon { font-size: 40px; flex-shrink: 0; }
 .health-title { font-size: 18px; font-weight: 700; margin: 0; }
-.health-desc  { font-size: 13px; margin: 3px 0 0 0; opacity: 0.8; }
+.health-desc  { font-size: 13px; margin: 3px 0 0 0; opacity: 0.9; }
 
 /* ── Glass KPI cards ── */
 .kpi-card {
-    background: rgba(255,255,255,0.85);
+    background: var(--ag-bg-card);
     backdrop-filter: blur(12px);
     border-radius: 16px;
     padding: 22px 18px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.04);
-    border: 1px solid rgba(255,255,255,0.6);
+    border: 1px solid var(--ag-border);
     border-top: 4px solid #2B6CB0;
     text-align: center;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -172,7 +340,7 @@ html, body, [class*="css"] {
 }
 .kpi-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.10), 0 16px 48px rgba(0,0,0,0.06);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12), 0 16px 48px rgba(0,0,0,0.08);
 }
 @keyframes fadeUp {
     from { opacity: 0; transform: translateY(16px); }
@@ -183,17 +351,17 @@ html, body, [class*="css"] {
     font-weight: 700;
     letter-spacing: 1.2px;
     text-transform: uppercase;
-    color: #94A3B8;
+    color: var(--ag-text-faint);
     margin-bottom: 8px;
 }
 .kpi-value {
     font-size: 32px;
     font-weight: 800;
-    color: #0F172A;
+    color: var(--ag-text-primary);
     line-height: 1.1;
     margin-bottom: 6px;
 }
-.kpi-sub { font-size: 12px; color: #94A3B8; }
+.kpi-sub { font-size: 12px; color: var(--ag-text-muted); }
 
 /* ── Grade badge ── */
 .grade-badge {
@@ -213,13 +381,21 @@ html, body, [class*="css"] {
 .section-hdr {
     font-size: 15px;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--ag-text-primary);
     margin: 0 0 14px 0;
     padding-bottom: 8px;
-    border-bottom: 2px solid #f1f5f9;
+    border-bottom: 2px solid var(--ag-border-subtle);
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+/* ── Framing header ── */
+.framing-hdr {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ag-text-primary);
+    margin: 14px 0 6px 0;
 }
 
 /* ── Variety chip ── */
@@ -227,12 +403,12 @@ html, body, [class*="css"] {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: #f0fdf4;
-    border: 1.5px solid #16a34a;
+    background: var(--ag-variety-bg);
+    border: 1.5px solid var(--ag-variety-border);
     border-radius: 10px;
     padding: 10px 16px;
     font-size: 13px;
-    color: #166534;
+    color: var(--ag-variety-text);
     font-weight: 500;
     margin-bottom: 16px;
     animation: fadeUp 0.4s ease;
@@ -246,10 +422,10 @@ html, body, [class*="css"] {
     margin-bottom: 4px;
     font-size: 13px;
     font-weight: 500;
-    color: #334155;
+    color: var(--ag-text-secondary);
 }
 .pbar-track {
-    background: #f1f5f9;
+    background: var(--ag-pbar-track);
     border-radius: 999px;
     height: 9px;
     overflow: hidden;
@@ -262,8 +438,8 @@ html, body, [class*="css"] {
 
 /* ── Storage card ── */
 .st-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--ag-bg-surface);
+    border: 1px solid var(--ag-border);
     border-radius: 14px;
     padding: 20px;
 }
@@ -271,54 +447,64 @@ html, body, [class*="css"] {
     display: flex;
     justify-content: space-between;
     padding: 8px 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--ag-border-subtle);
     font-size: 13px;
 }
-.st-key { color: #64748b; font-weight: 500; }
-.st-val { color: #0f172a; font-weight: 600; }
+.st-key { color: var(--ag-text-muted); font-weight: 500; }
+.st-val { color: var(--ag-text-primary); font-weight: 600; }
 
-/* ── Recommendation box ── */
-.rec-box {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: 12px;
+/* ── Summary & Legend Boxes ── */
+.summary-box {
     padding: 16px;
+    background: var(--ag-bg-surface);
+    border-radius: 12px;
+    border: 1px solid var(--ag-border);
     font-size: 13px;
-    color: #92400e;
+    color: var(--ag-text-secondary);
     line-height: 1.65;
 }
 
-/* ── Legend card ── */
-.legend-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 22px;
-    height: 100%;
-}
-.legend-row {
+.inline-legend {
     display: flex;
+    gap: 16px;
+    justify-content: center;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
+    padding: 9px 14px;
+    background: var(--ag-bg-surface);
+    border-radius: 10px;
+    border: 1px solid var(--ag-border);
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ag-text-secondary);
 }
-.legend-dot {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+
+/* ── Recommendation box ── */
+.rec-box {
+    background: var(--ag-rec-bg);
+    border: 1px solid var(--ag-rec-border);
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 13px;
+    color: var(--ag-rec-text);
+    line-height: 1.65;
 }
 
 /* ── Empty state ── */
 .empty-state {
     text-align: center;
     padding: 72px 40px;
-    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    background: var(--ag-empty-bg);
     border-radius: 20px;
-    border: 2px dashed #cbd5e1;
+    border: 2px dashed var(--ag-empty-border);
     margin-top: 20px;
     animation: fadeUp 0.6s ease;
+}
+.empty-state h3 {
+    color: var(--ag-text-primary) !important;
+}
+.empty-state p {
+    color: var(--ag-text-muted) !important;
 }
 
 /* ── Primary Action Button (Run Quality Assessment) ── */
@@ -342,7 +528,7 @@ button[kind="primary"]:hover {
     transform: translateY(-1px) !important;
 }
 
-/* ── Floating AgrowGrow Chatbot Button (Fixed at Bottom-Right Corner) ── */
+/* ── Floating AgroGrow Chatbot Button (Fixed at Bottom-Right Corner) ── */
 div[data-testid="stPopover"] {
     position: fixed !important;
     bottom: 28px !important;
@@ -382,9 +568,10 @@ div[data-testid="stPopoverBody"] {
     max-height: 80vh !important;
     border-radius: 18px !important;
     box-shadow: 0 16px 48px rgba(0,0,0,0.22) !important;
-    border: 1.5px solid #cbd5e1 !important;
+    border: 1.5px solid var(--ag-popover-border) !important;
     padding: 16px !important;
-    background: #ffffff !important;
+    background: var(--ag-popover-bg) !important;
+    color: var(--ag-text-primary) !important;
     overflow-y: auto !important;
 }
 </style>
@@ -493,7 +680,7 @@ if uploaded_file is not None:
     _is_full = (_aw >= _W * 0.95 and _ah >= _H * 0.95)
 
     # ── Framing mode ─────────────────────────────────────────────────────────
-    st.markdown("<p style='font-size:14px;font-weight:700;color:#1e293b;margin:14px 0 6px 0;'>✂️ Cob Framing Mode</p>", unsafe_allow_html=True)
+    st.markdown("<p class='framing-hdr'>✂️ Cob Framing Mode</p>", unsafe_allow_html=True)
     crop_mode = st.segmented_control(
         "Cob Framing Mode",
         options=["🌽 Auto Crop Ear", "📷 Full Image"],
@@ -641,38 +828,38 @@ if uploaded_file is not None:
 
         if no_corn:
             st.markdown("""
-            <div style='background:#fef2f2;border:2px solid #ef4444;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;'>
-                <div style='font-size:32px;'>🔍</div>
+            <div class='health-banner health-banner-nocorn'>
+                <div class='health-icon'>🔍</div>
                 <div>
-                    <h3 style='margin:0;color:#991b1b;font-size:18px;'>No Corn Detected in Image</h3>
-                    <p style='margin:4px 0 0 0;color:#b91c1c;font-size:13px;'>The uploaded image does not appear to contain a valid corn cob or ear. Please upload a clear photo of corn.</p>
+                    <h3 class='health-title'>No Corn Detected in Image</h3>
+                    <p class='health-desc'>The uploaded image does not appear to contain a valid corn cob or ear. Please upload a clear photo of corn.</p>
                 </div>
             </div>""", unsafe_allow_html=True)
         elif q >= 75 and d < 5.0:
             st.markdown(f"""
-            <div style='background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;'>
-                <div style='font-size:32px;'>✅</div>
+            <div class='health-banner health-banner-healthy'>
+                <div class='health-icon'>✅</div>
                 <div>
-                    <h3 style='margin:0;color:#166534;font-size:18px;'>Corn Batch is Healthy</h3>
-                    <p style='margin:4px 0 0 0;color:#15803d;font-size:13px;'>Overall quality score is <strong>{q:.1f}/100</strong> with minimal disease ({d:.1f}%). Safe for standard or extended storage.</p>
+                    <h3 class='health-title'>Corn Batch is Healthy</h3>
+                    <p class='health-desc'>Overall quality score is <strong>{q:.1f}/100</strong> with minimal disease ({d:.1f}%). Safe for standard or extended storage.</p>
                 </div>
             </div>""", unsafe_allow_html=True)
         elif q >= 45 and d < 20.0:
             st.markdown(f"""
-            <div style='background:#fffbeb;border:2px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;'>
-                <div style='font-size:32px;'>⚠️</div>
+            <div class='health-banner health-banner-warning'>
+                <div class='health-icon'>⚠️</div>
                 <div>
-                    <h3 style='margin:0;color:#92400e;font-size:18px;'>Moderate Defects Detected</h3>
-                    <p style='margin:4px 0 0 0;color:#b45309;font-size:13px;'>Quality score is <strong>{q:.1f}/100</strong> with {d:.1f}% diseased/damaged kernels. Immediate aeration or drying recommended.</p>
+                    <h3 class='health-title'>Moderate Defects Detected</h3>
+                    <p class='health-desc'>Quality score is <strong>{q:.1f}/100</strong> with {d:.1f}% diseased/damaged kernels. Immediate aeration or drying recommended.</p>
                 </div>
             </div>""", unsafe_allow_html=True)
         else:
             st.markdown(f"""
-            <div style='background:#fef2f2;border:2px solid #ef4444;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;'>
-                <div style='font-size:32px;'>❌</div>
+            <div class='health-banner health-banner-danger'>
+                <div class='health-icon'>❌</div>
                 <div>
-                    <h3 style='margin:0;color:#991b1b;font-size:18px;'>Severe Disease / Rotten Corn Detected</h3>
-                    <p style='margin:4px 0 0 0;color:#b91c1c;font-size:13px;'>Quality score is critical at <strong>{q:.1f}/100</strong> with {d:.1f}% diseased kernels. Not recommended for long-term storage or commercial sale.</p>
+                    <h3 class='health-title'>Severe Disease / Rotten Corn Detected</h3>
+                    <p class='health-desc'>Quality score is critical at <strong>{q:.1f}/100</strong> with {d:.1f}% diseased kernels. Not recommended for long-term storage or commercial sale.</p>
                 </div>
             </div>""", unsafe_allow_html=True)
 
@@ -693,7 +880,7 @@ if uploaded_file is not None:
 
             # Small, basic, clean inline color legend
             st.markdown("""
-            <div style='display:flex;gap:16px;justify-content:center;align-items:center;padding:9px 14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;margin-top:8px;font-size:12px;font-weight:600;color:#334155;'>
+            <div class='inline-legend'>
                 <span style='display:flex;align-items:center;gap:6px;'><span style='width:10px;height:10px;border-radius:50%;background:#00CC00;display:inline-block;'></span> Healthy</span>
                 <span style='display:flex;align-items:center;gap:6px;'><span style='width:10px;height:10px;border-radius:50%;background:#0066FF;display:inline-block;'></span> Missing</span>
                 <span style='display:flex;align-items:center;gap:6px;'><span style='width:10px;height:10px;border-radius:50%;background:#FF2222;display:inline-block;'></span> Diseased</span>
@@ -759,8 +946,7 @@ if uploaded_file is not None:
         with sc1:
             st.markdown("<p class='section-hdr'>📋 Grade Summary</p>", unsafe_allow_html=True)
             st.markdown(f"""
-            <div style='padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;
-                        font-size:13px;color:#334155;line-height:1.65;'>
+            <div class='summary-box'>
                 {g["summary"]}
             </div>""", unsafe_allow_html=True)
         with sc2:
@@ -826,23 +1012,23 @@ else:
     st.markdown("""
     <div class='empty-state'>
         <div style='font-size:64px;margin-bottom:16px;'>🌽</div>
-        <h3 style='color:#1e293b;font-weight:700;margin:0 0 10px 0;font-size:22px;'>
+        <h3 style='font-weight:700;margin:0 0 10px 0;font-size:22px;'>
             Upload a Corn Image to Get Started
         </h3>
-        <p style='color:#64748b;font-size:14px;max-width:520px;margin:0 auto;line-height:1.7;'>
+        <p style='font-size:14px;max-width:520px;margin:0 auto;line-height:1.7;'>
             Upload a photo of a corn cob in any standard image format (.jpg, .jpeg, .png, .webp, .bmp).
             The system will automatically detect the ear, run semantic segmentation,
             classify the grain variety, evaluate USDA/ISO grade, and forecast shelf life.
         </p>
         <div style='display:flex;gap:16px;justify-content:center;margin-top:24px;flex-wrap:wrap;'>
-            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:#475569;'>🔬 Semantic Segmentation</div>
-            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:#475569;'>📊 USDA / ISO Grading</div>
-            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:#475569;'>📦 Shelf-Life Forecast</div>
-            <div style='background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:#475569;'>🌾 5 Variety Detection</div>
+            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>🔬 Semantic Segmentation</div>
+            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>📊 USDA / ISO Grading</div>
+            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>📦 Shelf-Life Forecast</div>
+            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
+                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>🌾 5 Variety Detection</div>
         </div>
     </div>
     """, unsafe_allow_html=True)

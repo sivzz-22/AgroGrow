@@ -1,0 +1,7 @@
+[theme]
+primaryColor = "#16a34a"
+
+[server]
+headless = true
+enableCORS = true
+enableXsrfProtection = true
