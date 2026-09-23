@@ -29,13 +29,15 @@ from AgroGrow.training.trainer import CornNetTrainer
 def main():
     parser = argparse.ArgumentParser(description="AgroGrow Corn-Net Deep Learning Training")
     parser.add_argument("--from-scratch", action="store_true", help="Train from scratch (do not resume from checkpoint)")
-    parser.add_argument("--epochs", type=int, default=40, help="Number of training epochs (default: 40)")
+    parser.add_argument("--epochs", type=int, default=None, help="Max training epochs (default: None - unlimited, runs until auto-stop)")
+    parser.add_argument("--patience", type=int, default=15, help="Early stopping patience: stop if val mIoU does not improve for N epochs (default: 15)")
     parser.add_argument("--batch-size", type=int, default=2, help="Batch size for DataLoaders (default: 2)")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (default: 1e-4)")
     args = parser.parse_args()
 
+    epoch_desc = f"{args.epochs}" if args.epochs is not None else "Unlimited (auto-stops when no improvement)"
     logger.info("Initializing AgroGrow Deep Learning Training Pipeline...")
-    logger.info(f"Settings: epochs={args.epochs}, batch_size={args.batch_size}, lr={args.lr}, from_scratch={args.from_scratch}")
+    logger.info(f"Settings: epochs={epoch_desc}, patience={args.patience}, batch_size={args.batch_size}, lr={args.lr}, from_scratch={args.from_scratch}")
     
     # 1. Dataset Check & Auto-Preparation
     train_img_dir = global_config.images_dir / "train"
@@ -110,7 +112,7 @@ def main():
     else:
         logger.info("Training from scratch (clean initialisation).")
         
-    trainer.fit(num_epochs=args.epochs)
+    trainer.fit(num_epochs=args.epochs, patience=args.patience)
     
     logger.info("Training pipeline execution finished.")
 

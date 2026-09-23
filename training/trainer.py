@@ -123,16 +123,23 @@ class CornNetTrainer:
         
         return mean_loss, metrics["mean_iou"], metrics["mean_dice"], metrics["pixel_accuracy"]
 
-    def fit(self, num_epochs: int = None):
-        """Orchestrates fitting loop with early stopping on Val mIoU, validation, checkpoints, and visualization."""
-        epochs = num_epochs if num_epochs is not None else global_config.epochs
+    def fit(self, num_epochs: int = None, patience: int = None):
+        """
+        Orchestrates fitting loop with early stopping on Val mIoU, validation, checkpoints, and visualization.
+        If num_epochs is None, runs with no upper limit until early stopping triggers.
+        """
+        early_patience = patience if patience is not None else global_config.early_stopping_patience
+        # When num_epochs is None, allow running up to 10,000 epochs (effectively unlimited)
+        max_epochs = num_epochs if num_epochs is not None else 10000
+        
         # Restore best mIoU from checkpoint if resuming, otherwise start from 0
         best_val_miou = getattr(self, "_resumed_best_miou", 0.0)
         epochs_no_improve = 0
         
-        logger.info(f"Training started on device: {self.device}")
+        mode_str = f"{num_epochs} epochs max" if num_epochs is not None else "Unlimited epochs (runs until auto-stop)"
+        logger.info(f"Training started on device: {self.device} | Mode: {mode_str} | Early Stopping Patience: {early_patience} epochs")
         
-        for epoch in range(self.start_epoch, epochs):
+        for epoch in range(self.start_epoch, max_epochs):
             train_loss, train_miou, train_dice = self.train_epoch()
             val_loss, val_miou, val_dice, val_acc = self.val_epoch()
             
@@ -142,11 +149,23 @@ class CornNetTrainer:
             else:
                 self.lr_scheduler.step()
                 
-            # Log progress
+            # Early stopping check and tracking
+            if val_miou > best_val_miou:
+                best_val_miou = val_miou
+                epochs_no_improve = 0
+                self.save_best_model(val_loss, val_miou)
+                status_str = f"⭐ New Best mIoU! [Patience: 0/{early_patience}]"
+            else:
+                epochs_no_improve += 1
+                status_str = f"[Patience: {epochs_no_improve}/{early_patience}]"
+                
+            # Log progress with patience countdown
+            epoch_hdr = f"Epoch [{epoch+1}]" if num_epochs is None else f"Epoch [{epoch+1}/{num_epochs}]"
             logger.info(
-                f"Epoch [{epoch+1}/{epochs}] - "
+                f"{epoch_hdr} - "
                 f"Train Loss: {train_loss:.4f}, mIoU: {train_miou:.4f}, Dice: {train_dice:.4f} | "
-                f"Val Loss: {val_loss:.4f}, mIoU: {val_miou:.4f}, Dice: {val_dice:.4f}, Acc: {val_acc:.4f}"
+                f"Val Loss: {val_loss:.4f}, mIoU: {val_miou:.4f}, Dice: {val_dice:.4f}, Acc: {val_acc:.4f} | "
+                f"{status_str}"
             )
             
             # Record history
@@ -161,16 +180,14 @@ class CornNetTrainer:
             # Save regular checkpoint (includes best_val_miou for resume)
             self.save_checkpoint(epoch, best_val_miou)
             
-            # Early stopping on Val mIoU (the metric we actually care about)
-            if val_miou > best_val_miou:
-                best_val_miou = val_miou
-                epochs_no_improve = 0
-                self.save_best_model(val_loss, val_miou)
-            else:
-                epochs_no_improve += 1
-                if epochs_no_improve >= global_config.early_stopping_patience:
-                    logger.info(f"Early stopping triggered after {epoch+1} epochs (no mIoU improvement for {global_config.early_stopping_patience} epochs).")
-                    break
+            # Early stopping trigger
+            if epochs_no_improve >= early_patience:
+                logger.info(
+                    f"🛑 Auto-stopping triggered after {epoch+1} epochs: "
+                    f"Validation mIoU did not improve for {early_patience} consecutive epochs. "
+                    f"Best Val mIoU achieved: {best_val_miou:.4f}."
+                )
+                break
                     
         # Generate metric plots
         plot_training_curves(self.history, global_config.results_dir)
