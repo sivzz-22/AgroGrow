@@ -52,69 +52,99 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Global CSS (Dual-Theme: Light & Dark Adaptive) ───────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+# ── Session State Initialisation ─────────────────────────────────────────────
+if "selected_theme" not in st.session_state:
+    st.session_state["selected_theme"] = "☀️ Clean Light Mode"
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif !important;
-}
+if "selected_engine" not in st.session_state:
+    st.session_state["selected_engine"] = "🎯 Pure Trained CornNet (Recommended)"
 
-/* ── Theme Adaptive Variables (Supports Light & Dark Modes) ── */
-:root {
-    --ag-bg-card: rgba(255, 255, 255, 0.90);
-    --ag-bg-surface: #f8fafc;
-    --ag-bg-subtle: #f1f5f9;
-    --ag-border: #e2e8f0;
-    --ag-border-subtle: #f1f5f9;
-    --ag-text-primary: #0f172a;
-    --ag-text-secondary: #334155;
-    --ag-text-muted: #64748b;
-    --ag-text-faint: #94a3b8;
-    --ag-popover-bg: #ffffff;
-    --ag-popover-border: #cbd5e1;
-    --ag-pbar-track: #f1f5f9;
-    
-    --ag-variety-bg: #f0fdf4;
-    --ag-variety-border: #16a34a;
-    --ag-variety-text: #166534;
-    
-    --ag-rec-bg: #fffbeb;
-    --ag-rec-border: #fde68a;
-    --ag-rec-text: #92400e;
-    
-    --ag-empty-bg: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    --ag-empty-border: #cbd5e1;
+for key, default in {
+    "history":          [],
+    "current_analysis": None,
+    "chat_open":        False,
+    "chat_messages":    [],
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-    --ag-hb-healthy-bg: linear-gradient(135deg, #f0fdf4, #dcfce7);
-    --ag-hb-healthy-border: #16a34a;
-    --ag-hb-healthy-title: #166534;
-    --ag-hb-healthy-desc: #15803d;
-    --ag-hb-healthy-shadow: rgba(22, 163, 74, 0.12);
+# Ensure chat_context is always defined globally to prevent NameError
+chat_context = None
+use_device = None
 
-    --ag-hb-warning-bg: linear-gradient(135deg, #fffbeb, #fef9c3);
-    --ag-hb-warning-border: #d97706;
-    --ag-hb-warning-title: #92400e;
-    --ag-hb-warning-desc: #b45309;
-    --ag-hb-warning-shadow: rgba(217, 119, 6, 0.12);
+# ── Init chatbot (not cached — re-reads GEMINI_API_KEY from .env every restart) ─────
+if "_chatbot" not in st.session_state:
+    st.session_state["_chatbot"] = CornChatbot()
+chatbot = st.session_state["_chatbot"]
 
-    --ag-hb-danger-bg: linear-gradient(135deg, #fff1f2, #fde8e8);
-    --ag-hb-danger-border: #dc2626;
-    --ag-hb-danger-title: #991b1b;
-    --ag-hb-danger-desc: #b91c1c;
-    --ag-hb-danger-shadow: rgba(220, 38, 38, 0.12);
+# ── Sidebar Controls ─────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🌽 AgroGrow")
+    st.caption("Post-Harvest Corn Quality & Storage AI")
+    st.markdown("---")
 
-    --ag-hb-nocorn-bg: linear-gradient(135deg, #f8fafc, #f1f5f9);
-    --ag-hb-nocorn-border: #64748b;
-    --ag-hb-nocorn-title: #334155;
-    --ag-hb-nocorn-desc: #475569;
-    --ag-hb-nocorn-shadow: rgba(100, 116, 139, 0.10);
-}
+    # 1. Explicit Theme Switcher
+    st.markdown("### 🎨 Display Theme")
+    theme_choice = st.radio(
+        "Display Theme",
+        options=["☀️ Clean Light Mode", "🌙 Dark Modern Mode"],
+        index=0 if st.session_state.get("selected_theme") == "☀️ Clean Light Mode" else 1,
+        key="theme_radio",
+        label_visibility="collapsed"
+    )
+    st.session_state["selected_theme"] = theme_choice
+    is_dark = (theme_choice == "🌙 Dark Modern Mode")
 
-@media (prefers-color-scheme: dark) {
+    # 2. Inference Engine Switcher
+    st.markdown("---")
+    st.markdown("### 🧠 Inference Engine")
+    model_choice = st.radio(
+        "Inference Engine",
+        options=["🎯 Pure Trained CornNet (Recommended)", "🔬 Heuristic Filtered (Legacy)"],
+        index=0 if st.session_state.get("selected_engine") == "🎯 Pure Trained CornNet (Recommended)" else 1,
+        key="engine_radio",
+        help="Pure Trained CornNet executes the exact deep learning model weights directly without handcrafted heuristic overrides."
+    )
+    st.session_state["selected_engine"] = model_choice
+    is_pure_model = (model_choice == "🎯 Pure Trained CornNet (Recommended)")
+
+    st.markdown("---")
+    st.markdown("### 🌡️ Storage Parameters")
+    storage_type = st.selectbox("Storage Type", global_config.storage_types, index=0)
+
+    if storage_type == "Cold Storage":
+        temp_input = st.slider("Temperature (°C)", -20.0, 10.0, -2.0, 0.5,
+                               help="Sub-zero to chilled range for cold storage.")
+        humidity_input = st.slider("Humidity (%)", 30.0, 90.0, 50.0, 1.0)
+    elif storage_type == "Hermetic Bag":
+        temp_input = st.slider("Temperature (°C)", 5.0, 40.0, 22.0, 0.5)
+        humidity_input = st.slider("Humidity (%)", 30.0, 95.0, 65.0, 1.0)
+    else:
+        temp_input = st.slider("Temperature (°C)", 10.0, 50.0, 28.0, 0.5)
+        humidity_input = st.slider("Humidity (%)", 30.0, 98.0, 75.0, 1.0)
+
+    st.markdown("---")
+    st.markdown("### 🌾 Grain Variety")
+    corn_variety_input = st.selectbox(
+        "Corn Variety Mode",
+        options=[
+            "🔍 Auto-Detect Variety",
+            "🌽 Dent Corn (Yellow/White) — Commercial",
+            "🎨 Indian / Flint Corn (Multicoloured)",
+            "🍬 Sweet Corn (Pale Cream/Yellow)",
+            "🍿 Popcorn (Small Hard Kernels)",
+            "🔵 Blue / Black Corn (Hopi variety)",
+        ],
+        index=0,
+        help="Select manually for unusual varieties to prevent misclassification of pigmentation as disease."
+    )
+
+# ── Dynamic Theme Injection (Guarantees Perfect Contrast for Chosen Mode) ────
+if is_dark:
+    theme_css = """
     :root {
-        --ag-bg-card: rgba(30, 41, 59, 0.85);
+        --ag-bg-app: #0e1117;
+        --ag-bg-card: rgba(30, 41, 59, 0.90);
         --ag-bg-surface: #1e293b;
         --ag-bg-subtle: #0f172a;
         --ag-border: rgba(255, 255, 255, 0.12);
@@ -131,7 +161,7 @@ html, body, [class*="css"] {
         --ag-variety-border: #22c55e;
         --ag-variety-text: #86efac;
         
-        --ag-rec-bg: rgba(180, 83, 9, 0.20);
+        --ag-rec-bg: rgba(180, 83, 9, 0.22);
         --ag-rec-border: rgba(245, 158, 11, 0.40);
         --ag-rec-text: #fde68a;
         
@@ -162,63 +192,145 @@ html, body, [class*="css"] {
         --ag-hb-nocorn-desc: #cbd5e1;
         --ag-hb-nocorn-shadow: rgba(148, 163, 184, 0.15);
     }
-}
+    .stApp {
+        background-color: #0e1117 !important;
+        color: #f8fafc !important;
+    }
+    .stApp p, .stApp span, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+        color: #f8fafc;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #161b22 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] label {
+        color: #f8fafc !important;
+    }
+    [data-testid="stSidebar"] p[data-testid="stWidgetLabel"],
+    [data-testid="stSidebar"] .stCaption {
+        color: #94a3b8 !important;
+    }
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: rgba(30, 41, 59, 0.6) !important;
+        border: 2px dashed rgba(255, 255, 255, 0.15) !important;
+        border-radius: 14px !important;
+    }
+    [data-testid="stFileUploaderDropzone"] * {
+        color: #cbd5e1 !important;
+    }
+    [data-testid="stChatMessage"] {
+        background-color: #1e293b !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+    }
+    """
+else:
+    theme_css = """
+    :root {
+        --ag-bg-app: #f8fafc;
+        --ag-bg-card: #ffffff;
+        --ag-bg-surface: #ffffff;
+        --ag-bg-subtle: #f1f5f9;
+        --ag-border: #e2e8f0;
+        --ag-border-subtle: #f1f5f9;
+        --ag-text-primary: #0f172a;
+        --ag-text-secondary: #334155;
+        --ag-text-muted: #64748b;
+        --ag-text-faint: #94a3b8;
+        --ag-popover-bg: #ffffff;
+        --ag-popover-border: #cbd5e1;
+        --ag-pbar-track: #e2e8f0;
+        
+        --ag-variety-bg: #f0fdf4;
+        --ag-variety-border: #16a34a;
+        --ag-variety-text: #166534;
+        
+        --ag-rec-bg: #fffbeb;
+        --ag-rec-border: #fde68a;
+        --ag-rec-text: #92400e;
+        
+        --ag-empty-bg: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+        --ag-empty-border: #cbd5e1;
 
-/* Also support Streamlit user explicitly toggling Dark Mode in Streamlit Settings */
-[data-theme="dark"],
-.stApp[data-theme="dark"],
-body[data-theme="dark"] {
-    --ag-bg-card: rgba(30, 41, 59, 0.85);
-    --ag-bg-surface: #1e293b;
-    --ag-bg-subtle: #0f172a;
-    --ag-border: rgba(255, 255, 255, 0.12);
-    --ag-border-subtle: rgba(255, 255, 255, 0.08);
-    --ag-text-primary: #f8fafc;
-    --ag-text-secondary: #e2e8f0;
-    --ag-text-muted: #94a3b8;
-    --ag-text-faint: #64748b;
-    --ag-popover-bg: #0f172a;
-    --ag-popover-border: #334155;
-    --ag-pbar-track: #334155;
-    
-    --ag-variety-bg: rgba(22, 101, 52, 0.30);
-    --ag-variety-border: #22c55e;
-    --ag-variety-text: #86efac;
-    
-    --ag-rec-bg: rgba(180, 83, 9, 0.20);
-    --ag-rec-border: rgba(245, 158, 11, 0.40);
-    --ag-rec-text: #fde68a;
-    
-    --ag-empty-bg: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
-    --ag-empty-border: #334155;
+        --ag-hb-healthy-bg: linear-gradient(135deg, #f0fdf4, #dcfce7);
+        --ag-hb-healthy-border: #16a34a;
+        --ag-hb-healthy-title: #166534;
+        --ag-hb-healthy-desc: #15803d;
+        --ag-hb-healthy-shadow: rgba(22, 163, 74, 0.12);
 
-    --ag-hb-healthy-bg: linear-gradient(135deg, rgba(22, 101, 52, 0.35), rgba(20, 83, 45, 0.50));
-    --ag-hb-healthy-border: #22c55e;
-    --ag-hb-healthy-title: #86efac;
-    --ag-hb-healthy-desc: #bbf7d0;
-    --ag-hb-healthy-shadow: rgba(34, 197, 94, 0.20);
+        --ag-hb-warning-bg: linear-gradient(135deg, #fffbeb, #fef9c3);
+        --ag-hb-warning-border: #d97706;
+        --ag-hb-warning-title: #92400e;
+        --ag-hb-warning-desc: #b45309;
+        --ag-hb-warning-shadow: rgba(217, 119, 6, 0.12);
 
-    --ag-hb-warning-bg: linear-gradient(135deg, rgba(161, 98, 7, 0.35), rgba(133, 77, 14, 0.50));
-    --ag-hb-warning-border: #f59e0b;
-    --ag-hb-warning-title: #fde68a;
-    --ag-hb-warning-desc: #fef08a;
-    --ag-hb-warning-shadow: rgba(245, 158, 11, 0.20);
+        --ag-hb-danger-bg: linear-gradient(135deg, #fff1f2, #fde8e8);
+        --ag-hb-danger-border: #dc2626;
+        --ag-hb-danger-title: #991b1b;
+        --ag-hb-danger-desc: #b91c1c;
+        --ag-hb-danger-shadow: rgba(220, 38, 38, 0.12);
 
-    --ag-hb-danger-bg: linear-gradient(135deg, rgba(185, 28, 28, 0.35), rgba(153, 27, 27, 0.50));
-    --ag-hb-danger-border: #ef4444;
-    --ag-hb-danger-title: #fca5a5;
-    --ag-hb-danger-desc: #fecaca;
-    --ag-hb-danger-shadow: rgba(239, 68, 68, 0.20);
+        --ag-hb-nocorn-bg: linear-gradient(135deg, #f8fafc, #f1f5f9);
+        --ag-hb-nocorn-border: #64748b;
+        --ag-hb-nocorn-title: #334155;
+        --ag-hb-nocorn-desc: #475569;
+        --ag-hb-nocorn-shadow: rgba(100, 116, 139, 0.10);
+    }
+    .stApp {
+        background-color: #f8fafc !important;
+        color: #0f172a !important;
+    }
+    .stApp p, .stApp span, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+        color: #0f172a;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #ffffff !important;
+        border-right: 1px solid #e2e8f0 !important;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] label {
+        color: #0f172a !important;
+    }
+    [data-testid="stSidebar"] p[data-testid="stWidgetLabel"],
+    [data-testid="stSidebar"] .stCaption {
+        color: #64748b !important;
+    }
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #f1f5f9 !important;
+        border: 2px dashed #cbd5e1 !important;
+        border-radius: 14px !important;
+    }
+    [data-testid="stFileUploaderDropzone"] * {
+        color: #334155 !important;
+    }
+    [data-testid="stChatMessage"] {
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
+    }
+    """
 
-    --ag-hb-nocorn-bg: linear-gradient(135deg, rgba(51, 65, 85, 0.40), rgba(30, 41, 59, 0.60));
-    --ag-hb-nocorn-border: #94a3b8;
-    --ag-hb-nocorn-title: #f1f5f9;
-    --ag-hb-nocorn-desc: #cbd5e1;
-    --ag-hb-nocorn-shadow: rgba(148, 163, 184, 0.15);
-}
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
+html, body, [class*="css"] {{
+    font-family: 'Inter', sans-serif !important;
+}}
+
+{theme_css}
 
 /* ── Animated gradient header ── */
-.ag-header {
+.ag-header {{
     background: linear-gradient(135deg, #0f4c2a 0%, #1a6b3a 40%, #0d5c3e 70%, #1a4a2a 100%);
     background-size: 300% 300%;
     animation: gradientShift 8s ease infinite;
@@ -228,39 +340,39 @@ body[data-theme="dark"] {
     text-align: center;
     position: relative;
     overflow: hidden;
-}
-.ag-header::before {
+}}
+.ag-header::before {{
     content: '';
     position: absolute;
     top: -50%; left: -50%;
     width: 200%; height: 200%;
     background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 60%);
     animation: rotate 15s linear infinite;
-}
-@keyframes gradientShift {
-    0%   { background-position: 0% 50%; }
-    50%  { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-@keyframes rotate {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
-}
-.ag-title {
+}}
+@keyframes gradientShift {{
+    0%   {{ background-position: 0% 50%; }}
+    50%  {{ background-position: 100% 50%; }}
+    100% {{ background-position: 0% 50%; }}
+}}
+@keyframes rotate {{
+    from {{ transform: rotate(0deg); }}
+    to   {{ transform: rotate(360deg); }}
+}}
+.ag-title {{
     font-size: 40px;
     font-weight: 800;
     color: #ffffff !important;
     margin: 0;
     letter-spacing: -0.5px;
     text-shadow: 0 2px 12px rgba(0,0,0,0.3);
-}
-.ag-subtitle {
+}}
+.ag-subtitle {{
     color: rgba(255,255,255,0.85) !important;
     font-size: 15px;
     margin: 8px 0 0 0;
     font-weight: 400;
-}
-.ag-pill {
+}}
+.ag-pill {{
     display: inline-block;
     background: rgba(255,255,255,0.15);
     border: 1px solid rgba(255,255,255,0.25);
@@ -273,10 +385,10 @@ body[data-theme="dark"] {
     letter-spacing: 1px;
     text-transform: uppercase;
     backdrop-filter: blur(8px);
-}
+}}
 
 /* ── Health status banner ── */
-.health-banner {
+.health-banner {{
     border-radius: 14px;
     padding: 18px 24px;
     margin: 16px 0;
@@ -284,49 +396,49 @@ body[data-theme="dark"] {
     align-items: center;
     gap: 16px;
     animation: slideDown 0.4s ease;
-}
-@keyframes slideDown {
-    from { opacity: 0; transform: translateY(-12px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-.health-banner-healthy {
+}}
+@keyframes slideDown {{
+    from {{ opacity: 0; transform: translateY(-12px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
+}}
+.health-banner-healthy {{
     background: var(--ag-hb-healthy-bg);
     border: 1.5px solid var(--ag-hb-healthy-border);
     box-shadow: 0 4px 20px var(--ag-hb-healthy-shadow);
-}
-.health-banner-healthy .health-title { color: var(--ag-hb-healthy-title) !important; }
-.health-banner-healthy .health-desc { color: var(--ag-hb-healthy-desc) !important; }
+}}
+.health-banner-healthy .health-title {{ color: var(--ag-hb-healthy-title) !important; }}
+.health-banner-healthy .health-desc {{ color: var(--ag-hb-healthy-desc) !important; }}
 
-.health-banner-warning {
+.health-banner-warning {{
     background: var(--ag-hb-warning-bg);
     border: 1.5px solid var(--ag-hb-warning-border);
     box-shadow: 0 4px 20px var(--ag-hb-warning-shadow);
-}
-.health-banner-warning .health-title { color: var(--ag-hb-warning-title) !important; }
-.health-banner-warning .health-desc { color: var(--ag-hb-warning-desc) !important; }
+}}
+.health-banner-warning .health-title {{ color: var(--ag-hb-warning-title) !important; }}
+.health-banner-warning .health-desc {{ color: var(--ag-hb-warning-desc) !important; }}
 
-.health-banner-danger {
+.health-banner-danger {{
     background: var(--ag-hb-danger-bg);
     border: 1.5px solid var(--ag-hb-danger-border);
     box-shadow: 0 4px 20px var(--ag-hb-danger-shadow);
-}
-.health-banner-danger .health-title { color: var(--ag-hb-danger-title) !important; }
-.health-banner-danger .health-desc { color: var(--ag-hb-danger-desc) !important; }
+}}
+.health-banner-danger .health-title {{ color: var(--ag-hb-danger-title) !important; }}
+.health-banner-danger .health-desc {{ color: var(--ag-hb-danger-desc) !important; }}
 
-.health-banner-nocorn {
+.health-banner-nocorn {{
     background: var(--ag-hb-nocorn-bg);
     border: 1.5px solid var(--ag-hb-nocorn-border);
     box-shadow: 0 4px 20px var(--ag-hb-nocorn-shadow);
-}
-.health-banner-nocorn .health-title { color: var(--ag-hb-nocorn-title) !important; }
-.health-banner-nocorn .health-desc { color: var(--ag-hb-nocorn-desc) !important; }
+}}
+.health-banner-nocorn .health-title {{ color: var(--ag-hb-nocorn-title) !important; }}
+.health-banner-nocorn .health-desc {{ color: var(--ag-hb-nocorn-desc) !important; }}
 
-.health-icon { font-size: 40px; flex-shrink: 0; }
-.health-title { font-size: 18px; font-weight: 700; margin: 0; }
-.health-desc  { font-size: 13px; margin: 3px 0 0 0; opacity: 0.9; }
+.health-icon {{ font-size: 40px; flex-shrink: 0; }}
+.health-title {{ font-size: 18px; font-weight: 700; margin: 0; }}
+.health-desc  {{ font-size: 13px; margin: 3px 0 0 0; opacity: 0.9; }}
 
 /* ── Glass KPI cards ── */
-.kpi-card {
+.kpi-card {{
     background: var(--ag-bg-card);
     backdrop-filter: blur(12px);
     border-radius: 16px;
@@ -337,48 +449,48 @@ body[data-theme="dark"] {
     text-align: center;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     animation: fadeUp 0.5s ease both;
-}
-.kpi-card:hover {
+}}
+.kpi-card:hover {{
     transform: translateY(-3px);
     box-shadow: 0 6px 20px rgba(0,0,0,0.12), 0 16px 48px rgba(0,0,0,0.08);
-}
-@keyframes fadeUp {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-.kpi-label {
+}}
+@keyframes fadeUp {{
+    from {{ opacity: 0; transform: translateY(16px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
+}}
+.kpi-label {{
     font-size: 10.5px;
     font-weight: 700;
     letter-spacing: 1.2px;
     text-transform: uppercase;
     color: var(--ag-text-faint);
     margin-bottom: 8px;
-}
-.kpi-value {
+}}
+.kpi-value {{
     font-size: 32px;
     font-weight: 800;
     color: var(--ag-text-primary);
     line-height: 1.1;
     margin-bottom: 6px;
-}
-.kpi-sub { font-size: 12px; color: var(--ag-text-muted); }
+}}
+.kpi-sub {{ font-size: 12px; color: var(--ag-text-muted); }}
 
 /* ── Grade badge ── */
-.grade-badge {
+.grade-badge {{
     display: inline-block;
     padding: 3px 14px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 700;
     margin-top: 6px;
-}
-.grade-A { background:#dcfce7; color:#166534; }
-.grade-B { background:#dbeafe; color:#1e40af; }
-.grade-C { background:#fef9c3; color:#854d0e; }
-.grade-D { background:#fee2e2; color:#991b1b; }
+}}
+.grade-A {{ background:#dcfce7; color:#166534; }}
+.grade-B {{ background:#dbeafe; color:#1e40af; }}
+.grade-C {{ background:#fef9c3; color:#854d0e; }}
+.grade-D {{ background:#fee2e2; color:#991b1b; }}
 
 /* ── Section header ── */
-.section-hdr {
+.section-hdr {{
     font-size: 15px;
     font-weight: 700;
     color: var(--ag-text-primary);
@@ -388,18 +500,18 @@ body[data-theme="dark"] {
     display: flex;
     align-items: center;
     gap: 6px;
-}
+}}
 
 /* ── Framing header ── */
-.framing-hdr {
+.framing-hdr {{
     font-size: 14px;
     font-weight: 700;
     color: var(--ag-text-primary);
     margin: 14px 0 6px 0;
-}
+}}
 
 /* ── Variety chip ── */
-.variety-chip {
+.variety-chip {{
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -412,49 +524,49 @@ body[data-theme="dark"] {
     font-weight: 500;
     margin-bottom: 16px;
     animation: fadeUp 0.4s ease;
-}
+}}
 
 /* ── Progress bars ── */
-.pbar-wrap { margin-bottom: 14px; }
-.pbar-meta {
+.pbar-wrap {{ margin-bottom: 14px; }}
+.pbar-meta {{
     display: flex;
     justify-content: space-between;
     margin-bottom: 4px;
     font-size: 13px;
     font-weight: 500;
     color: var(--ag-text-secondary);
-}
-.pbar-track {
+}}
+.pbar-track {{
     background: var(--ag-pbar-track);
     border-radius: 999px;
     height: 9px;
     overflow: hidden;
-}
-.pbar-fill {
+}}
+.pbar-fill {{
     height: 9px;
     border-radius: 999px;
     transition: width 0.6s ease;
-}
+}}
 
 /* ── Storage card ── */
-.st-card {
+.st-card {{
     background: var(--ag-bg-surface);
     border: 1px solid var(--ag-border);
     border-radius: 14px;
     padding: 20px;
-}
-.st-row {
+}}
+.st-row {{
     display: flex;
     justify-content: space-between;
     padding: 8px 0;
     border-bottom: 1px solid var(--ag-border-subtle);
     font-size: 13px;
-}
-.st-key { color: var(--ag-text-muted); font-weight: 500; }
-.st-val { color: var(--ag-text-primary); font-weight: 600; }
+}}
+.st-key {{ color: var(--ag-text-muted); font-weight: 500; }}
+.st-val {{ color: var(--ag-text-primary); font-weight: 600; }}
 
 /* ── Summary & Legend Boxes ── */
-.summary-box {
+.summary-box {{
     padding: 16px;
     background: var(--ag-bg-surface);
     border-radius: 12px;
@@ -462,9 +574,9 @@ body[data-theme="dark"] {
     font-size: 13px;
     color: var(--ag-text-secondary);
     line-height: 1.65;
-}
+}}
 
-.inline-legend {
+.inline-legend {{
     display: flex;
     gap: 16px;
     justify-content: center;
@@ -477,10 +589,10 @@ body[data-theme="dark"] {
     font-size: 12px;
     font-weight: 600;
     color: var(--ag-text-secondary);
-}
+}}
 
 /* ── Recommendation box ── */
-.rec-box {
+.rec-box {{
     background: var(--ag-rec-bg);
     border: 1px solid var(--ag-rec-border);
     border-radius: 12px;
@@ -488,10 +600,10 @@ body[data-theme="dark"] {
     font-size: 13px;
     color: var(--ag-rec-text);
     line-height: 1.65;
-}
+}}
 
 /* ── Empty state ── */
-.empty-state {
+.empty-state {{
     text-align: center;
     padding: 72px 40px;
     background: var(--ag-empty-bg);
@@ -499,16 +611,16 @@ body[data-theme="dark"] {
     border: 2px dashed var(--ag-empty-border);
     margin-top: 20px;
     animation: fadeUp 0.6s ease;
-}
-.empty-state h3 {
+}}
+.empty-state h3 {{
     color: var(--ag-text-primary) !important;
-}
-.empty-state p {
+}}
+.empty-state p {{
     color: var(--ag-text-muted) !important;
-}
+}}
 
 /* ── Primary Action Button (Run Quality Assessment) ── */
-button[kind="primary"] {
+button[kind="primary"] {{
     background: linear-gradient(135deg, #15803d 0%, #16a34a 50%, #059669 100%) !important;
     border: none !important;
     color: #ffffff !important;
@@ -521,15 +633,15 @@ button[kind="primary"] {
     transition: all 0.2s ease !important;
     margin-top: 10px !important;
     margin-bottom: 15px !important;
-}
-button[kind="primary"]:hover {
+}}
+button[kind="primary"]:hover {{
     background: linear-gradient(135deg, #166534 0%, #15803d 50%, #047857 100%) !important;
     box-shadow: 0 6px 20px rgba(22, 163, 74, 0.5) !important;
     transform: translateY(-1px) !important;
-}
+}}
 
 /* ── Floating AgroGrow Chatbot Button (Fixed at Bottom-Right Corner) ── */
-div[data-testid="stPopover"] {
+div[data-testid="stPopover"] {{
     position: fixed !important;
     bottom: 28px !important;
     right: 28px !important;
@@ -537,9 +649,9 @@ div[data-testid="stPopover"] {
     width: auto !important;
     max-width: fit-content !important;
     z-index: 999999 !important;
-}
+}}
 
-div[data-testid="stPopover"] > button {
+div[data-testid="stPopover"] > button {{
     background: linear-gradient(135deg, #16a34a 0%, #059669 100%) !important;
     color: #ffffff !important;
     font-weight: 700 !important;
@@ -553,16 +665,16 @@ div[data-testid="stPopover"] > button {
     gap: 10px !important;
     cursor: pointer !important;
     transition: all 0.25s ease !important;
-}
+}}
 
-div[data-testid="stPopover"] > button:hover {
+div[data-testid="stPopover"] > button:hover {{
     transform: translateY(-3px) scale(1.04) !important;
     box-shadow: 0 10px 32px rgba(22, 163, 74, 0.65) !important;
     background: linear-gradient(135deg, #15803d 0%, #047857 100%) !important;
-}
+}}
 
 /* Floating popover dialog window */
-div[data-testid="stPopoverBody"] {
+div[data-testid="stPopoverBody"] {{
     max-width: 480px !important;
     min-width: 360px !important;
     max-height: 80vh !important;
@@ -573,63 +685,9 @@ div[data-testid="stPopoverBody"] {
     background: var(--ag-popover-bg) !important;
     color: var(--ag-text-primary) !important;
     overflow-y: auto !important;
-}
+}}
 </style>
 """, unsafe_allow_html=True)
-
-# ── Session State ─────────────────────────────────────────────────────────────
-for key, default in {
-    "history":          [],
-    "current_analysis": None,
-    "chat_open":        False,
-    "chat_messages":    [],
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
-
-# Ensure chat_context is always defined globally to prevent NameError
-chat_context = None
-use_device = None
-
-# ── Init chatbot (not cached — re-reads GEMINI_API_KEY from .env every restart) ─────
-if "_chatbot" not in st.session_state:
-    st.session_state["_chatbot"] = CornChatbot()
-chatbot = st.session_state["_chatbot"]
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## 🌽 AgroGrow")
-    st.markdown("---")
-
-    st.markdown("### 🌡️ Storage Parameters")
-    storage_type = st.selectbox("Storage Type", global_config.storage_types, index=0)
-
-    if storage_type == "Cold Storage":
-        temp_input = st.slider("Temperature (°C)", -20.0, 10.0, -2.0, 0.5,
-                               help="Sub-zero to chilled range for cold storage.")
-        humidity_input = st.slider("Humidity (%)", 30.0, 90.0, 50.0, 1.0)
-    elif storage_type == "Hermetic Bag":
-        temp_input = st.slider("Temperature (°C)", 5.0, 40.0, 22.0, 0.5)
-        humidity_input = st.slider("Humidity (%)", 30.0, 95.0, 65.0, 1.0)
-    else:
-        temp_input = st.slider("Temperature (°C)", 10.0, 50.0, 28.0, 0.5)
-        humidity_input = st.slider("Humidity (%)", 30.0, 98.0, 75.0, 1.0)
-
-    st.markdown("---")
-    st.markdown("### 🌾 Grain Variety")
-    corn_variety_input = st.selectbox(
-        "Corn Variety Mode",
-        options=[
-            "🔍 Auto-Detect Variety",
-            "🌽 Dent Corn (Yellow/White) — Commercial",
-            "🎨 Indian / Flint Corn (Multicoloured)",
-            "🍬 Sweet Corn (Pale Cream/Yellow)",
-            "🍿 Popcorn (Small Hard Kernels)",
-            "🔵 Blue / Black Corn (Hopi variety)",
-        ],
-        index=0,
-        help="Select manually for unusual varieties to prevent misclassification of pigmentation as disease."
-    )
 
 
 
@@ -727,7 +785,7 @@ if uploaded_file is not None:
             try:
                 predictor = CornPredictor(device=use_device)
                 mask, overlay, _, confidence = predictor.predict_single(
-                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input
+                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input, pure_model=is_pure_model
                 )
                 global_config.results_dir.mkdir(parents=True, exist_ok=True)
                 overlay_temp_path = global_config.results_dir / f"{img_path.stem}_overlay.png"

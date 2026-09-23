@@ -339,16 +339,19 @@ class CornPredictor:
                        img_path: Union[str, Path],
                        auto_crop: bool = True,
                        corn_variety: str = "auto",
+                       pure_model: bool = True,
                        **kwargs
                        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
         Full pipeline:
           1. Load image
-          2. Auto-crop to corn ear if requested (strips outdoor background)
-          3. Run CornNet inference (with transparent CPU fallback if CUDA has issues)
-          4. Post-processing to suppress background bleed and handle corn varieties
-          5. Generate colour overlay (Green=Healthy, Blue=Missing, Red=Diseased)
-          6. Return mask, overlay, prob_map, confidence
+          2. Auto-crop to corn ear if requested
+          3. Run CornNet inference (with transparent CPU fallback)
+          4. When pure_model=True (default), use the pure trained neural network segmentation
+             directly without heuristic color overrides
+          5. Variety classifier identifies variety for display
+          6. Generate colour overlay (Green=Healthy, Blue=Missing, Red=Diseased)
+          7. Return mask, overlay, prob_map, confidence
         """
         img_path = Path(img_path)
         img_bgr  = cv2.imread(str(img_path))
@@ -383,10 +386,25 @@ class CornPredictor:
             else:
                 raise e
 
-        # ── Post-processing to remove background bleed and handle variety ─
+        # ── Output resolution ────────────────────────────────────────────
         W, H = global_config.input_size[1], global_config.input_size[0]
         img_display = cv2.resize(img_cropped, (W, H))
-        mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
+
+        if pure_model:
+            # ── Pure Deep Learning Mode: Use trained CornNet model directly ──
+            mask = raw_mask.copy()
+            variety_name = "Commercial Dent Corn (Zea mays indentata)"
+            try:
+                clf = _get_variety_clf()
+                if clf is not None and clf.is_trained:
+                    _k, _disp, _conf = clf.classify(img_display)
+                    if _disp and _k not in ("unknown", "uncertain"):
+                        variety_name = _disp
+            except Exception as _e:
+                logger.debug(f"Variety classification info: {_e}")
+        else:
+            mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
+
         self.last_detected_variety = variety_name
 
         # ── Build clean semi-transparent overlay (Natural Photo Blend) ───
