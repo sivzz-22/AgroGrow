@@ -7,6 +7,26 @@ and a floating Gemini-powered chatbot.
 import tempfile
 import sys
 from pathlib import Path
+import importlib.util
+
+# ── Dynamic module resolution: Ensure 'AgroGrow' is always resolvable on Streamlit Cloud & local ──
+ROOT_DIR = Path(__file__).resolve().parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+if str(ROOT_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR.parent))
+
+if "AgroGrow" not in sys.modules:
+    spec = importlib.util.spec_from_file_location(
+        "AgroGrow",
+        str(ROOT_DIR / "__init__.py"),
+        submodule_search_locations=[str(ROOT_DIR)]
+    )
+    if spec and spec.loader:
+        agro_mod = importlib.util.module_from_spec(spec)
+        sys.modules["AgroGrow"] = agro_mod
+        spec.loader.exec_module(agro_mod)
+
 import streamlit as st
 import numpy as np
 import cv2
@@ -14,8 +34,6 @@ import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
-
-sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from AgroGrow.config import global_config
 from AgroGrow.utils.logger import logger
