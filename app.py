@@ -831,32 +831,17 @@ else:
     chat_context = None
 
 # ── Floating AgroGrow Chatbot Popover (Always anchored at Bottom-Right) ──────────
-bot_label = "💬 Ask AgroGrow AI 🟢" if chatbot.is_ai_powered else "💬 Ask AgroGrow AI"
+bot_label = "💬 Ask AgroGrow AI" 
 with st.popover(bot_label, help="Chat with AgroGrow Virtual Agronomist"):
-    st.markdown("### 🌽 AgroGrow Virtual Agronomist")
-    if chatbot.is_ai_powered:
-        st.success(f"🟢 **Gemini AI Active** ({getattr(chatbot, 'model_name', 'gemini-flash')}) — Live AI answers!")
-    else:
-        st.info("🔵 **Knowledge Base Mode** — Set GEMINI_API_KEY in .env to enable Gemini AI.")
-
-    if chat_context:
-        st.info(
-            f"📊 **Context:** {chat_context.get('variety', 'Corn')} · "
-            f"Grade **{chat_context.get('grade', 'N/A')}** · "
-            f"{chat_context.get('shelf_life_days', 0):.0f} day shelf-life"
-        )
+    st.markdown("#### 🌽 AgroGrow AI Assistant")
+    st.caption("Ask me anything about corn quality, storage, or diseases.")
+    st.divider()
 
     # Scrollable chat messages container
-    chat_container = st.container(height=280)
+    chat_container = st.container(height=300)
     with chat_container:
         if not st.session_state.chat_messages:
-            st.markdown(
-                "👋 **Welcome!** I'm powered by Gemini AI. Ask me anything:\n\n"
-                "- 🌾 Corn varieties and classification\n"
-                "- 🌡️ Storage & shelf-life optimization\n"
-                "- 🔬 Diseases, defects, and grading\n"
-                "- 📊 USDA / ISO quality standards"
-            )
+            st.caption("Type your question below to get started.")
         else:
             for msg in st.session_state.chat_messages:
                 avatar = "🤖" if msg["role"] == "assistant" else "👤"
@@ -864,16 +849,16 @@ with st.popover(bot_label, help="Chat with AgroGrow Virtual Agronomist"):
                     st.markdown(msg["content"])
 
     # Chat Input
-    user_q = st.chat_input("Ask anything about corn quality, varieties, storage...", key="AgrowGrow_popover_input")
+    user_q = st.chat_input("Ask about corn quality, varieties, storage...", key="AgrowGrow_popover_input")
     if user_q:
         st.session_state.chat_messages.append({"role": "user", "content": user_q})
-        with st.spinner("Gemini AI is thinking..."):
+        with st.spinner("Thinking..."):
             reply = chatbot.chat(user_q, analysis_context=chat_context)
         st.session_state.chat_messages.append({"role": "assistant", "content": reply})
         st.rerun()
 
     # Clear chat button
     if st.session_state.chat_messages:
-        if st.button("🗑️ Clear Chat History", key="btn_clear_chat", use_container_width=True):
+        if st.button("🗑️ Clear Chat", key="btn_clear_chat", use_container_width=True):
             st.session_state.chat_messages = []
             st.rerun()
