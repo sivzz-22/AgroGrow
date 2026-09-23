@@ -16,6 +16,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
 import torch.nn as nn
 
+import argparse
 from AgroGrow.config import global_config
 from AgroGrow.utils.logger import logger
 from AgroGrow.utils.prepare_dataset import DatasetPreparer
@@ -26,7 +27,15 @@ from AgroGrow.models.loss import HybridLoss
 from AgroGrow.training.trainer import CornNetTrainer
 
 def main():
+    parser = argparse.ArgumentParser(description="AgroGrow Corn-Net Deep Learning Training")
+    parser.add_argument("--from-scratch", action="store_true", help="Train from scratch (do not resume from checkpoint)")
+    parser.add_argument("--epochs", type=int, default=40, help="Number of training epochs (default: 40)")
+    parser.add_argument("--batch-size", type=int, default=2, help="Batch size for DataLoaders (default: 2)")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (default: 1e-4)")
+    args = parser.parse_args()
+
     logger.info("Initializing AgroGrow Deep Learning Training Pipeline...")
+    logger.info(f"Settings: epochs={args.epochs}, batch_size={args.batch_size}, lr={args.lr}, from_scratch={args.from_scratch}")
     
     # 1. Dataset Check & Auto-Preparation
     train_img_dir = global_config.images_dir / "train"
@@ -57,14 +66,14 @@ def main():
         torch.backends.cudnn.benchmark = True
 
     # 3. Initialize DataLoaders
-    train_loader, val_loader, _ = get_data_loaders()
+    train_loader, val_loader, _ = get_data_loaders(batch_size=args.batch_size)
 
     # 4. Initialize Network, Optimizer, Loss, and Scheduler
     model = CornNet(num_classes=global_config.num_classes)
     
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=global_config.learning_rate,
+        lr=args.lr,
         weight_decay=global_config.weight_decay
     )
     
@@ -92,14 +101,16 @@ def main():
         device=device
     )
     
-    # Check if a checkpoint exists to resume training
-    resumed, best_miou_so_far = trainer.load_checkpoint()
-    if resumed:
-        logger.info(f"Resuming training from checkpoint. Best Val mIoU so far: {best_miou_so_far:.4f}")
-        # Restore best_val_miou in the trainer so early stopping continues correctly
-        trainer._resumed_best_miou = best_miou_so_far
+    # Check if a checkpoint exists to resume training (if not from scratch)
+    if not args.from_scratch:
+        resumed, best_miou_so_far = trainer.load_checkpoint()
+        if resumed:
+            logger.info(f"Resuming training from checkpoint. Best Val mIoU so far: {best_miou_so_far:.4f}")
+            trainer._resumed_best_miou = best_miou_so_far
+    else:
+        logger.info("Training from scratch (clean initialisation).")
         
-    trainer.fit()
+    trainer.fit(num_epochs=args.epochs)
     
     logger.info("Training pipeline execution finished.")
 
