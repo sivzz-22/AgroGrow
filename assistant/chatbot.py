@@ -113,6 +113,12 @@ class CornChatbot:
     def _init_gemini(self):
         load_dotenv(override=True)
         env_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not env_key:
+            try:
+                import streamlit as st
+                env_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
+            except Exception:
+                pass
         if env_key:
             self.api_key = env_key
 
