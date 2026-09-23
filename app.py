@@ -11,7 +11,9 @@ import streamlit as st
 import numpy as np
 import cv2
 import pandas as pd
-import torch
+from dotenv import load_dotenv
+
+load_dotenv()
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -357,14 +359,15 @@ div[data-testid="stPopover"] > button:hover {
 
 /* Floating popover dialog window */
 div[data-testid="stPopoverBody"] {
-    max-width: 450px !important;
+    max-width: 480px !important;
     min-width: 360px !important;
-    max-height: 560px !important;
+    max-height: 80vh !important;
     border-radius: 18px !important;
     box-shadow: 0 16px 48px rgba(0,0,0,0.22) !important;
     border: 1.5px solid #cbd5e1 !important;
-    padding: 18px !important;
+    padding: 16px !important;
     background: #ffffff !important;
+    overflow-y: auto !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -830,10 +833,13 @@ else:
     chat_context = None
 
 # ── Floating AgrowGrow Chatbot Popover (Always anchored at Bottom-Right) ─────────
-with st.popover("💬 Ask AgroGrow AI", help="Chat with AgroGrow Virtual Agronomist"):
+bot_label = "💬 Ask AgroGrow AI 🟢" if chatbot.is_ai_powered else "💬 Ask AgroGrow AI"
+with st.popover(bot_label, help="Chat with AgroGrow Virtual Agronomist"):
     st.markdown("### 🌽 AgroGrow Virtual Agronomist")
-    status_badge = "🟢 Gemini 1.5 Flash AI" if chatbot.is_ai_powered else "🔵 Agronomic Knowledge Base"
-    st.caption(f"{status_badge} · Answers variety, health, and storage questions.")
+    if chatbot.is_ai_powered:
+        st.success(f"🟢 **Gemini AI Active** ({getattr(chatbot, 'model_name', 'Flash')}) — Ask anything!")
+    else:
+        st.caption("🔵 **Agronomic Knowledge Base** — Using rule-based expert system.")
 
     if chat_context:
         st.info(
@@ -841,15 +847,13 @@ with st.popover("💬 Ask AgroGrow AI", help="Chat with AgroGrow Virtual Agronom
             f"Grade: **{chat_context.get('grade', 'N/A')}** | "
             f"Shelf-life: **{chat_context.get('shelf_life_days', 0):.0f} days**"
         )
-    else:
-        st.caption("💡 *Tip: Upload an image to enable batch-specific analysis and diagnosis!*")
 
-    # Scrollable chat messages container
-    chat_container = st.container(height=300)
+    # Scrollable chat messages container (compact height so input is always visible)
+    chat_container = st.container(height=200)
     with chat_container:
         if not st.session_state.chat_messages:
             st.markdown(
-                "👋 **Welcome! I'm AgrowGrow.** Ask me anything about:\n\n"
+                "👋 **Welcome! I'm AgroGrow AI.** Ask me anything about:\n\n"
                 "- 🌾 **Corn Varieties** (Dent, Flint, Sweet, Popcorn, Hopi Blue/Black)\n"
                 "- 🌡️ **Storage Optimization** (Cold storage, moisture, aeration, shelf-life)\n"
                 "- 🔬 **Diseases & Defects** (Ear rot, leaf blight, molds, missing kernels)\n"
@@ -861,12 +865,23 @@ with st.popover("💬 Ask AgroGrow AI", help="Chat with AgroGrow Virtual Agronom
                 with st.chat_message(msg["role"], avatar=avatar):
                     st.markdown(msg["content"])
 
+    # Quick prompt shortcuts
+    qc1, qc2 = st.columns(2)
+    quick_prompt = None
+    with qc1:
+        if st.button("🌾 Variety Info", key="quick_q_variety", use_container_width=True):
+            quick_prompt = "Tell me about this corn variety and its commercial uses."
+    with qc2:
+        if st.button("🌡️ Storage Tips", key="quick_q_storage", use_container_width=True):
+            quick_prompt = "What are the ideal storage conditions to maximize shelf life?"
+
     # Chat Input
-    user_q = st.chat_input("Ask AgrowGrow about corn varieties, diseases, storage...", key="AgrowGrow_popover_input")
-    if user_q:
-        st.session_state.chat_messages.append({"role": "user", "content": user_q})
-        with st.spinner("AgrowGrow is thinking..."):
-            reply = chatbot.chat(user_q, analysis_context=chat_context)
+    user_q = st.chat_input("Ask AgroGrow about varieties, diseases, storage...", key="AgrowGrow_popover_input")
+    active_q = user_q or quick_prompt
+    if active_q:
+        st.session_state.chat_messages.append({"role": "user", "content": active_q})
+        with st.spinner("AgroGrow AI is thinking..."):
+            reply = chatbot.chat(active_q, analysis_context=chat_context)
         st.session_state.chat_messages.append({"role": "assistant", "content": reply})
         st.rerun()
 

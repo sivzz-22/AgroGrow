@@ -37,5 +37,6 @@ reports/*.pdf
 # IDE / OS settings
 .vscode/
 .idea/
-.DS_Store
-Thumbs.db
+# Environment and secret keys
+.env
+*.env

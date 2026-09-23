@@ -7,7 +7,10 @@ general and context-specific questions about corn quality, varieties, and storag
 import os
 import re
 from typing import Dict, Optional
+from dotenv import load_dotenv
 from AgroGrow.utils.logger import logger
+
+load_dotenv()
 
 # ── Corn Variety Knowledge Base ───────────────────────────────────────────────
 VARIETY_INFO = {
@@ -100,28 +103,44 @@ class CornChatbot:
     otherwise falls back to an enhanced context-aware rule-based system.
     """
 
-    def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
         self.gemini_client = None
         self.gemini_model = None
+        self.model_name = "gemini-flash-latest"
+        self._init_gemini()
 
-        if self.api_key:
+    def _init_gemini(self):
+        load_dotenv(override=True)
+        env_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if env_key:
+            self.api_key = env_key
+
+        if self.api_key and not self.gemini_model:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=self.api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-1.5-flash")
-                logger.info("Gemini AI chatbot initialised successfully.")
+                for candidate in ["gemini-flash-latest", "gemini-3.6-flash", "gemini-2.5-flash-lite"]:
+                    try:
+                        self.gemini_model = genai.GenerativeModel(candidate)
+                        self.model_name = candidate
+                        logger.info(f"Gemini AI chatbot initialised successfully with model: {candidate}")
+                        break
+                    except Exception:
+                        continue
             except ImportError:
                 logger.warning("google-generativeai not installed. Falling back to rule-based chatbot.")
                 self.gemini_model = None
             except Exception as e:
                 logger.warning(f"Gemini init failed: {e}. Using rule-based fallback.")
                 self.gemini_model = None
-        else:
+        elif not self.api_key:
             logger.info("No GEMINI_API_KEY found. Running enhanced rule-based chatbot.")
 
     @property
     def is_ai_powered(self) -> bool:
+        if self.gemini_model is None:
+            self._init_gemini()
         return self.gemini_model is not None
 
     def chat(self, user_message: str, analysis_context: Optional[Dict] = None) -> str:
@@ -200,9 +219,22 @@ class CornChatbot:
         full_prompt = f"{system_prompt}\n\nUser question: {user_message}"
         try:
             response = self.gemini_model.generate_content(full_prompt)
-            return response.text.strip()
+            if response and response.text:
+                return response.text.strip()
+            return self._rule_based_response(user_message, context)
         except Exception as e:
-            logger.error(f"Gemini API error: {e}")
+            logger.error(f"Gemini API error ({getattr(self, 'model_name', 'unknown')}): {e}")
+            for fallback in ["gemini-3.6-flash", "gemini-flash-latest"]:
+                if fallback != getattr(self, "model_name", ""):
+                    try:
+                        import google.generativeai as genai
+                        self.gemini_model = genai.GenerativeModel(fallback)
+                        self.model_name = fallback
+                        resp = self.gemini_model.generate_content(full_prompt)
+                        if resp and resp.text:
+                            return resp.text.strip()
+                    except Exception:
+                        continue
             return self._rule_based_response(user_message, context)
 
     def _rule_based_response(self, user_message: str, context: Optional[Dict]) -> str:
