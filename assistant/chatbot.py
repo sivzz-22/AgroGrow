@@ -146,15 +146,13 @@ class CornChatbot:
     def chat(self, user_message: str, analysis_context: Optional[Dict] = None) -> str:
         """
         Responds to a user message.
-
-        Args:
-            user_message: The question from the user.
-            analysis_context: Optional dict with current analysis results
-                              (grade, percentages, shelf_life, variety, etc.)
-
-        Returns:
-            str: The chatbot response.
+        Always tries Gemini first when API key is available; falls back to rule-based only
+        if the API call genuinely fails.
         """
+        # Re-check env every time in case .env was added after startup
+        if self.gemini_model is None:
+            self._init_gemini()
+
         if self.gemini_model is not None:
             return self._gemini_response(user_message, analysis_context)
         else:
