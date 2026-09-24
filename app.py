@@ -345,38 +345,41 @@ html, body, [class*="css"] {{
     border-color: #16a34a !important;
 }}
 
-/* ── Mode selector cards ── */
-.mode-card {{
-    border-radius: 14px;
-    padding: 18px 20px 14px 20px;
-    margin-bottom: 6px;
-    cursor: default;
-    transition: all 0.2s ease;
-    text-align: center;
+/* ── Mode selector card-buttons ── */
+button.ag-mode-card-btn {{
+    min-height: 100px !important;
+    white-space: pre-line !important;
+    border-radius: 14px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    padding: 18px 16px !important;
+    line-height: 1.7 !important;
+    letter-spacing: 0 !important;
+    transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    cursor: pointer !important;
 }}
-.mode-card-active {{
-    background: linear-gradient(135deg, rgba(22,163,74,0.14) 0%, rgba(5,150,105,0.10) 100%);
-    border: 2px solid #16a34a;
-    box-shadow: 0 4px 18px rgba(22,163,74,0.15);
+button.ag-mode-card-btn:hover {{
+    transform: translateY(-3px) !important;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.12) !important;
 }}
-.mode-card-inactive {{
-    background: var(--ag-bg-surface);
-    border: 1.5px solid var(--ag-border);
+/* Inactive card */
+button.ag-mode-card-btn[data-testid="stBaseButton-secondary"] {{
+    background: var(--ag-bg-surface) !important;
+    border: 1.5px solid var(--ag-border) !important;
+    color: var(--ag-text-secondary) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
 }}
-.mode-icon {{
-    font-size: 28px;
-    margin-bottom: 6px;
-}}
-.mode-label {{
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--ag-text-primary);
-    margin-bottom: 4px;
-}}
-.mode-desc {{
-    font-size: 11.5px;
-    color: var(--ag-text-muted);
-    line-height: 1.4;
+/* Active card (green glow) */
+button.ag-mode-card-btn[data-testid="stBaseButton-primary"] {{
+    background: linear-gradient(135deg, rgba(22,163,74,0.12) 0%, rgba(5,150,105,0.08) 100%) !important;
+    border: 2px solid #16a34a !important;
+    color: var(--ag-text-primary) !important;
+    box-shadow: 0 4px 20px rgba(22,163,74,0.18) !important;
 }}
 
 /* ── Animated gradient header ── */
@@ -828,38 +831,46 @@ _cur_mode = st.session_state.get("selected_workflow", "paper")
 _mc1, _mc2 = st.columns(2)
 with _mc1:
     _paper_active = (_cur_mode == "paper")
-    st.markdown(
-        f"""<div class='mode-card {"mode-card-active" if _paper_active else "mode-card-inactive"}'
-             id='mode_paper'>
-          <div class='mode-icon'>🌾</div>
-          <div class='mode-label'>Research Paper Mode</div>
-          <div class='mode-desc'>Single variety · CornNet · Standard benchmark</div>
-        </div>""",
-        unsafe_allow_html=True
-    )
-    if st.button("Select Research Paper Mode", key="btn_mode_paper",
-                 use_container_width=True,
-                 type="primary" if _paper_active else "secondary"):
+    if st.button(
+        "🌾\nResearch Paper Mode\nSingle variety · CornNet · Standard",
+        key="btn_mode_paper",
+        use_container_width=True,
+        type="primary" if _paper_active else "secondary"
+    ):
         st.session_state["selected_workflow"] = "paper"
         st.session_state["current_analysis"] = None
         st.rerun()
 with _mc2:
     _multi_active = (_cur_mode == "multi")
-    st.markdown(
-        f"""<div class='mode-card {"mode-card-active" if _multi_active else "mode-card-inactive"}'
-             id='mode_multi'>
-          <div class='mode-icon'>🔬</div>
-          <div class='mode-label'>Multi-Variety AI Mode</div>
-          <div class='mode-desc'>5 varieties · Auto-detect · Advanced analysis</div>
-        </div>""",
-        unsafe_allow_html=True
-    )
-    if st.button("Select Multi-Variety AI Mode", key="btn_mode_multi",
-                 use_container_width=True,
-                 type="primary" if _multi_active else "secondary"):
+    if st.button(
+        "🔬\nMulti-Variety AI Mode\n5 varieties · Auto-detect · Advanced",
+        key="btn_mode_multi",
+        use_container_width=True,
+        type="primary" if _multi_active else "secondary"
+    ):
         st.session_state["selected_workflow"] = "multi"
         st.session_state["current_analysis"] = None
         st.rerun()
+
+# JS: tag mode buttons so CSS can style them as cards (runs after DOM is ready)
+st.markdown("""
+<script>
+(function tagModeBtns() {
+    var els = document.querySelectorAll(
+        '[data-testid="stBaseButton-primary"], [data-testid="stBaseButton-secondary"]'
+    );
+    var tagged = 0;
+    els.forEach(function(el) {
+        var t = el.innerText || el.textContent || "";
+        if (t.includes("Research Paper Mode") || t.includes("Multi-Variety AI Mode")) {
+            el.classList.add("ag-mode-card-btn");
+            tagged++;
+        }
+    });
+    if (tagged < 2) { setTimeout(tagModeBtns, 150); }
+})();
+</script>
+""", unsafe_allow_html=True)
 
 # ── Resolve mode-specific settings ────────────────────────────────────────────
 is_paper_mode = (st.session_state.get("selected_workflow", "paper") == "paper")
