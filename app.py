@@ -95,18 +95,61 @@ with st.sidebar:
     st.session_state["selected_theme"] = theme_choice
     is_dark = (theme_choice == "🌙 Dark Modern Mode")
 
-    # 2. Inference Engine Switcher
+    # 2. Workflow / Application Mode
     st.markdown("---")
-    st.markdown("### 🧠 Inference Engine")
-    model_choice = st.radio(
-        "Inference Engine",
-        options=["🎯 Pure Trained CornNet (Recommended)", "🔬 Heuristic Filtered (Legacy)"],
-        index=0 if st.session_state.get("selected_engine") == "🎯 Pure Trained CornNet (Recommended)" else 1,
-        key="engine_radio",
-        help="Pure Trained CornNet executes the exact deep learning model weights directly without handcrafted heuristic overrides."
+    st.markdown("### ⚙️ Workflow Mode")
+    workflow_choice = st.radio(
+        "Workflow Mode",
+        options=[
+            "🌾 Research Paper Mode (Single Variety + Shelf Life)",
+            "🔬 Multi-Variety AI Mode (5 Varieties + All Models)"
+        ],
+        index=0 if st.session_state.get("selected_workflow", "").startswith("🌾") or "selected_workflow" not in st.session_state else 1,
+        key="workflow_radio",
+        help="Research Paper Mode matches the exact paper benchmark: single standard fresh commercial/sweet corn variety + pure CornNet segmentation + USDA/ISO grading + Shelf-life forecasting."
     )
-    st.session_state["selected_engine"] = model_choice
-    is_pure_model = (model_choice == "🎯 Pure Trained CornNet (Recommended)")
+    st.session_state["selected_workflow"] = workflow_choice
+    is_paper_mode = workflow_choice.startswith("🌾")
+
+    if is_paper_mode:
+        is_pure_model = True
+        corn_variety_input = "🌽 Dent Corn (Yellow/White) — Commercial"
+        st.markdown(
+            "<div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);padding:10px 14px;border-radius:10px;font-size:12.5px;color:var(--ag-text-secondary);margin-top:6px;'>"
+            "🌽 <strong>Single Target Variety:</strong><br>"
+            "<span style='color:var(--ag-text-muted);font-size:11.5px;'>Commercial Fresh Sweet Corn (<em>Zea mays</em>) — Research Paper Standard. Auxiliary variety classifier disabled.</span>"
+            "</div>",
+            unsafe_allow_html=True
+        )
+    else:
+        # Multi-Variety Mode: Expose engine switcher & 5-variety dropdown
+        st.markdown("---")
+        st.markdown("### 🧠 Inference Engine")
+        model_choice = st.radio(
+            "Inference Engine",
+            options=["🎯 Pure Trained CornNet (Recommended)", "🔬 Heuristic Filtered (Legacy)"],
+            index=0 if st.session_state.get("selected_engine") == "🎯 Pure Trained CornNet (Recommended)" else 1,
+            key="engine_radio",
+            help="Pure Trained CornNet executes the exact deep learning model weights directly."
+        )
+        st.session_state["selected_engine"] = model_choice
+        is_pure_model = (model_choice == "🎯 Pure Trained CornNet (Recommended)")
+
+        st.markdown("---")
+        st.markdown("### 🌾 Grain Variety")
+        corn_variety_input = st.selectbox(
+            "Corn Variety Mode",
+            options=[
+                "🔍 Auto-Detect Variety",
+                "🌽 Dent Corn (Yellow/White) — Commercial",
+                "🎨 Indian / Flint Corn (Multicoloured)",
+                "🍬 Sweet Corn (Pale Cream/Yellow)",
+                "🍿 Popcorn (Small Hard Kernels)",
+                "🔵 Blue / Black Corn (Hopi variety)",
+            ],
+            index=0,
+            help="Select manually for unusual varieties to prevent misclassification of pigmentation as disease."
+        )
 
     st.markdown("---")
     st.markdown("### 🌡️ Storage Parameters")
@@ -122,22 +165,6 @@ with st.sidebar:
     else:
         temp_input = st.slider("Temperature (°C)", 10.0, 50.0, 28.0, 0.5)
         humidity_input = st.slider("Humidity (%)", 30.0, 98.0, 75.0, 1.0)
-
-    st.markdown("---")
-    st.markdown("### 🌾 Grain Variety")
-    corn_variety_input = st.selectbox(
-        "Corn Variety Mode",
-        options=[
-            "🔍 Auto-Detect Variety",
-            "🌽 Dent Corn (Yellow/White) — Commercial",
-            "🎨 Indian / Flint Corn (Multicoloured)",
-            "🍬 Sweet Corn (Pale Cream/Yellow)",
-            "🍿 Popcorn (Small Hard Kernels)",
-            "🔵 Blue / Black Corn (Hopi variety)",
-        ],
-        index=0,
-        help="Select manually for unusual varieties to prevent misclassification of pigmentation as disease."
-    )
 
 # ── Dynamic Theme Injection (Guarantees Perfect Contrast for Chosen Mode) ────
 if is_dark:
@@ -812,13 +839,19 @@ if uploaded_file is not None:
                     risk_level = "Medium Risk"
                     recommendation = "Aerate grain and store in a cool, low-moisture silo."
 
+                if is_paper_mode:
+                    target_variety = "Commercial Fresh Sweet Corn (Zea mays) — Research Paper Standard"
+                else:
+                    target_variety = getattr(predictor, "last_detected_variety",
+                                           "Commercial Dent Corn (Zea mays indentata)")
+
                 st.session_state.current_analysis = {
                     "image_path":   img_path,
                     "overlay_path": overlay_temp_path,
                     "features":     features,
                     "grading":      grading,
-                    "variety":      getattr(predictor, "last_detected_variety",
-                                           "Commercial Dent Corn (Zea mays indentata)"),
+                    "variety":      target_variety,
+                    "is_paper_mode": is_paper_mode,
                     "storage": {
                         "shelf_life_days": shelf_life,
                         "risk_level":      risk_level,
@@ -851,6 +884,7 @@ if uploaded_file is not None:
         g   = res["grading"]
         s   = res["storage"]
         variety_name = res.get("variety", "Commercial Dent Corn (Zea mays indentata)")
+        is_single_var = res.get("is_paper_mode", False)
 
         # Build chatbot context from current results
         chat_context = {
@@ -863,20 +897,22 @@ if uploaded_file is not None:
         st.divider()
 
         # Variety chip
+        chip_label = "Target Crop:" if is_single_var else "Detected Variety:"
         var_emoji = "🌽"
-        if "flint" in variety_name.lower() or "indian" in variety_name.lower():
-            var_emoji = "🎨"
-        elif "sweet" in variety_name.lower():
-            var_emoji = "🍬"
-        elif "popcorn" in variety_name.lower() or "everta" in variety_name.lower():
-            var_emoji = "🍿"
-        elif "blue" in variety_name.lower() or "black" in variety_name.lower():
-            var_emoji = "🔵"
+        if not is_single_var:
+            if "flint" in variety_name.lower() or "indian" in variety_name.lower():
+                var_emoji = "🎨"
+            elif "sweet" in variety_name.lower():
+                var_emoji = "🍬"
+            elif "popcorn" in variety_name.lower() or "everta" in variety_name.lower():
+                var_emoji = "🍿"
+            elif "blue" in variety_name.lower() or "black" in variety_name.lower():
+                var_emoji = "🔵"
 
         st.markdown(f"""
         <div class='variety-chip' style='margin-bottom:20px;'>
             <span style='font-size:22px;'>{var_emoji}</span>
-            <span><strong>Detected Variety:</strong> {variety_name}</span>
+            <span><strong>{chip_label}</strong> {variety_name}</span>
         </div>""", unsafe_allow_html=True)
 
         # ── Health Status Banner ────────────────────────────────────────────────
