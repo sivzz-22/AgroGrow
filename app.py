@@ -59,6 +59,12 @@ if "selected_theme" not in st.session_state:
 if "selected_engine" not in st.session_state:
     st.session_state["selected_engine"] = "🎯 Pure Trained CornNet (Recommended)"
 
+if "selected_workflow" not in st.session_state:
+    st.session_state["selected_workflow"] = "paper"
+# Migrate old emoji-string values from previous sessions
+elif st.session_state["selected_workflow"] not in ("paper", "multi"):
+    st.session_state["selected_workflow"] = "paper"
+
 for key, default in {
     "history":          [],
     "current_analysis": None,
@@ -79,74 +85,26 @@ chatbot = st.session_state["_chatbot"]
 
 # ── Sidebar Controls ─────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🌽 AgroGrow")
-    st.caption("Post-Harvest Corn Quality & Storage AI")
-    # Defaults
-    if "selected_theme" not in st.session_state:
-        st.session_state["selected_theme"] = "☀️ Clean Light Mode"
-    if "selected_workflow" not in st.session_state:
-        st.session_state["selected_workflow"] = "🌾 Research Paper Mode"
-
     is_dark = (st.session_state.get("selected_theme") == "🌙 Dark Modern Mode")
-    is_paper_mode = st.session_state.get("selected_workflow", "").startswith("🌾")
+    is_paper_mode = st.session_state.get("selected_workflow", "paper") == "paper"
 
-    # Row 1: Theme Buttons (Light / Dark)
-    t_c1, t_c2 = st.columns(2)
-    with t_c1:
-        if st.button("☀️ Light", use_container_width=True, type="primary" if not is_dark else "secondary", key="btn_theme_light"):
-            st.session_state["selected_theme"] = "☀️ Clean Light Mode"
-            st.rerun()
-    with t_c2:
-        if st.button("🌙 Dark", use_container_width=True, type="primary" if is_dark else "secondary", key="btn_theme_dark"):
-            st.session_state["selected_theme"] = "🌙 Dark Modern Mode"
-            st.rerun()
-
-    # Row 2: Workflow Mode Buttons (Paper Mode / Multi-AI)
-    w_c1, w_c2 = st.columns(2)
-    with w_c1:
-        if st.button("🌾 Paper Mode", use_container_width=True, type="primary" if is_paper_mode else "secondary", key="btn_wf_paper", help="Standard Single-Variety Fresh Sweet Corn + Shelf Life (Research Paper Benchmark)"):
-            st.session_state["selected_workflow"] = "🌾 Research Paper Mode"
-            st.rerun()
-    with w_c2:
-        if st.button("🔬 Multi-AI", use_container_width=True, type="primary" if not is_paper_mode else "secondary", key="btn_wf_multi", help="Multi-Variety AI Mode (5 Varieties + Auxiliary Models)"):
-            st.session_state["selected_workflow"] = "🔬 Multi-Variety AI Mode"
+    # ── Minimal header: Title + single theme icon button ──────────────────────
+    _hc1, _hc2 = st.columns([6, 1])
+    with _hc1:
+        st.markdown("<span class='ag-sidebar-title'>🌽 AgroGrow</span>", unsafe_allow_html=True)
+    with _hc2:
+        _theme_icon = "🌙" if is_dark else "☀️"
+        _theme_tip  = "Switch to Light Mode" if is_dark else "Switch to Dark Mode"
+        if st.button(_theme_icon, key="btn_theme_toggle", help=_theme_tip):
+            st.session_state["selected_theme"] = (
+                "☀️ Clean Light Mode" if is_dark else "🌙 Dark Modern Mode"
+            )
             st.rerun()
 
-    if is_paper_mode:
-        is_pure_model = True
-        corn_variety_input = "🌽 Dent Corn (Yellow/White) — Commercial"
-        st.caption("Target: Commercial Sweet Corn (*Zea mays*) + Shelf Life")
-    else:
-        # Multi-Variety Mode: Expose engine switcher & 5-variety dropdown
-        st.markdown("---")
-        st.markdown("### 🧠 Inference Engine")
-        model_choice = st.radio(
-            "Inference Engine",
-            options=["🎯 Pure Trained CornNet (Recommended)", "🔬 Heuristic Filtered (Legacy)"],
-            index=0 if st.session_state.get("selected_engine") == "🎯 Pure Trained CornNet (Recommended)" else 1,
-            key="engine_radio",
-            help="Pure Trained CornNet executes the exact deep learning model weights directly."
-        )
-        st.session_state["selected_engine"] = model_choice
-        is_pure_model = (model_choice == "🎯 Pure Trained CornNet (Recommended)")
-
-        st.markdown("---")
-        st.markdown("### 🌾 Grain Variety")
-        corn_variety_input = st.selectbox(
-            "Corn Variety Mode",
-            options=[
-                "🔍 Auto-Detect Variety",
-                "🌽 Dent Corn (Yellow/White) — Commercial",
-                "🎨 Indian / Flint Corn (Multicoloured)",
-                "🍬 Sweet Corn (Pale Cream/Yellow)",
-                "🍿 Popcorn (Small Hard Kernels)",
-                "🔵 Blue / Black Corn (Hopi variety)",
-            ],
-            index=0,
-            help="Select manually for unusual varieties to prevent misclassification of pigmentation as disease."
-        )
-
+    st.caption("Post-Harvest Corn Quality & Storage AI")
     st.markdown("---")
+
+    # ── Storage Parameters ────────────────────────────────────────────────────
     st.markdown("### 🌡️ Storage Parameters")
     storage_type = st.selectbox("Storage Type", global_config.storage_types, index=0)
 
@@ -160,6 +118,11 @@ with st.sidebar:
     else:
         temp_input = st.slider("Temperature (°C)", 10.0, 50.0, 28.0, 0.5)
         humidity_input = st.slider("Humidity (%)", 30.0, 98.0, 75.0, 1.0)
+
+# ── Resolve mode variables (needed before theme CSS block) ────────────────────
+is_paper_mode = st.session_state.get("selected_workflow", "paper") == "paper"
+is_pure_model = True
+corn_variety_input = "🌽 Dent Corn (Yellow/White) — Commercial"
 
 # ── Dynamic Theme Injection (Guarantees Perfect Contrast for Chosen Mode) ────
 if is_dark:
@@ -351,6 +314,71 @@ html, body, [class*="css"] {{
 
 {theme_css}
 
+/* ── Sidebar compact title ── */
+.ag-sidebar-title {{
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--ag-text-primary);
+    white-space: nowrap;
+    display: inline-block;
+    line-height: 1.6;
+}}
+
+/* ── Theme toggle icon button in sidebar — tiny, no border ── */
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {{
+    padding: 2px 4px !important;
+    min-height: unset !important;
+    height: 28px !important;
+    width: 28px !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    border: 1px solid var(--ag-border) !important;
+    box-shadow: none !important;
+    color: var(--ag-text-primary) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {{
+    background: var(--ag-bg-subtle) !important;
+    border-color: #16a34a !important;
+}}
+
+/* ── Mode selector cards ── */
+.mode-card {{
+    border-radius: 14px;
+    padding: 18px 20px 14px 20px;
+    margin-bottom: 6px;
+    cursor: default;
+    transition: all 0.2s ease;
+    text-align: center;
+}}
+.mode-card-active {{
+    background: linear-gradient(135deg, rgba(22,163,74,0.14) 0%, rgba(5,150,105,0.10) 100%);
+    border: 2px solid #16a34a;
+    box-shadow: 0 4px 18px rgba(22,163,74,0.15);
+}}
+.mode-card-inactive {{
+    background: var(--ag-bg-surface);
+    border: 1.5px solid var(--ag-border);
+}}
+.mode-icon {{
+    font-size: 28px;
+    margin-bottom: 6px;
+}}
+.mode-label {{
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ag-text-primary);
+    margin-bottom: 4px;
+}}
+.mode-desc {{
+    font-size: 11.5px;
+    color: var(--ag-text-muted);
+    line-height: 1.4;
+}}
+
 /* ── Animated gradient header ── */
 .ag-header {{
     background: linear-gradient(135deg, #0f4c2a 0%, #1a6b3a 40%, #0d5c3e 70%, #1a4a2a 100%);
@@ -381,7 +409,7 @@ html, body, [class*="css"] {{
     to   {{ transform: rotate(360deg); }}
 }}
 .ag-title {{
-    font-size: 40px;
+    font-size: clamp(24px, 5vw, 40px);
     font-weight: 800;
     color: #ffffff !important;
     margin: 0;
@@ -390,7 +418,7 @@ html, body, [class*="css"] {{
 }}
 .ag-subtitle {{
     color: rgba(255,255,255,0.85) !important;
-    font-size: 15px;
+    font-size: clamp(12px, 2vw, 15px);
     margin: 8px 0 0 0;
     font-weight: 400;
 }}
@@ -400,7 +428,7 @@ html, body, [class*="css"] {{
     border: 1px solid rgba(255,255,255,0.25);
     border-radius: 999px;
     padding: 4px 16px;
-    font-size: 12px;
+    font-size: clamp(10px, 1.5vw, 12px);
     color: rgba(255,255,255,0.95) !important;
     font-weight: 600;
     margin-top: 14px;
@@ -418,6 +446,7 @@ html, body, [class*="css"] {{
     align-items: center;
     gap: 16px;
     animation: slideDown 0.4s ease;
+    flex-wrap: wrap;
 }}
 @keyframes slideDown {{
     from {{ opacity: 0; transform: translateY(-12px); }}
@@ -455,22 +484,23 @@ html, body, [class*="css"] {{
 .health-banner-nocorn .health-title {{ color: var(--ag-hb-nocorn-title) !important; }}
 .health-banner-nocorn .health-desc {{ color: var(--ag-hb-nocorn-desc) !important; }}
 
-.health-icon {{ font-size: 40px; flex-shrink: 0; }}
-.health-title {{ font-size: 18px; font-weight: 700; margin: 0; }}
-.health-desc  {{ font-size: 13px; margin: 3px 0 0 0; opacity: 0.9; }}
+.health-icon {{ font-size: clamp(28px, 5vw, 40px); flex-shrink: 0; }}
+.health-title {{ font-size: clamp(14px, 2.5vw, 18px); font-weight: 700; margin: 0; }}
+.health-desc  {{ font-size: clamp(11px, 1.8vw, 13px); margin: 3px 0 0 0; opacity: 0.9; }}
 
 /* ── Glass KPI cards ── */
 .kpi-card {{
     background: var(--ag-bg-card);
     backdrop-filter: blur(12px);
     border-radius: 16px;
-    padding: 22px 18px;
+    padding: clamp(14px, 2vw, 22px) clamp(10px, 1.5vw, 18px);
     box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.04);
     border: 1px solid var(--ag-border);
     border-top: 4px solid #2B6CB0;
     text-align: center;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     animation: fadeUp 0.5s ease both;
+    height: 100%;
 }}
 .kpi-card:hover {{
     transform: translateY(-3px);
@@ -481,7 +511,7 @@ html, body, [class*="css"] {{
     to   {{ opacity: 1; transform: translateY(0); }}
 }}
 .kpi-label {{
-    font-size: 10.5px;
+    font-size: clamp(9px, 1.2vw, 10.5px);
     font-weight: 700;
     letter-spacing: 1.2px;
     text-transform: uppercase;
@@ -489,7 +519,7 @@ html, body, [class*="css"] {{
     margin-bottom: 8px;
 }}
 .kpi-value {{
-    font-size: 32px;
+    font-size: clamp(22px, 4vw, 32px);
     font-weight: 800;
     color: var(--ag-text-primary);
     line-height: 1.1;
@@ -513,7 +543,7 @@ html, body, [class*="css"] {{
 
 /* ── Section header ── */
 .section-hdr {{
-    font-size: 15px;
+    font-size: clamp(13px, 2vw, 15px);
     font-weight: 700;
     color: var(--ag-text-primary);
     margin: 0 0 14px 0;
@@ -546,6 +576,7 @@ html, body, [class*="css"] {{
     font-weight: 500;
     margin-bottom: 16px;
     animation: fadeUp 0.4s ease;
+    flex-wrap: wrap;
 }}
 
 /* ── Progress bars ── */
@@ -557,6 +588,8 @@ html, body, [class*="css"] {{
     font-size: 13px;
     font-weight: 500;
     color: var(--ag-text-secondary);
+    flex-wrap: wrap;
+    gap: 4px;
 }}
 .pbar-track {{
     background: var(--ag-pbar-track);
@@ -583,6 +616,8 @@ html, body, [class*="css"] {{
     padding: 8px 0;
     border-bottom: 1px solid var(--ag-border-subtle);
     font-size: 13px;
+    flex-wrap: wrap;
+    gap: 4px;
 }}
 .st-key {{ color: var(--ag-text-muted); font-weight: 500; }}
 .st-val {{ color: var(--ag-text-primary); font-weight: 600; }}
@@ -600,7 +635,7 @@ html, body, [class*="css"] {{
 
 .inline-legend {{
     display: flex;
-    gap: 16px;
+    gap: 10px;
     justify-content: center;
     align-items: center;
     padding: 9px 14px;
@@ -611,6 +646,7 @@ html, body, [class*="css"] {{
     font-size: 12px;
     font-weight: 600;
     color: var(--ag-text-secondary);
+    flex-wrap: wrap;
 }}
 
 /* ── Recommendation box ── */
@@ -627,7 +663,7 @@ html, body, [class*="css"] {{
 /* ── Empty state ── */
 .empty-state {{
     text-align: center;
-    padding: 72px 40px;
+    padding: clamp(40px, 8vw, 72px) clamp(20px, 5vw, 40px);
     background: var(--ag-empty-bg);
     border-radius: 20px;
     border: 2px dashed var(--ag-empty-border);
@@ -646,10 +682,10 @@ button[kind="primary"] {{
     background: linear-gradient(135deg, #15803d 0%, #16a34a 50%, #059669 100%) !important;
     border: none !important;
     color: #ffffff !important;
-    font-size: 16px !important;
+    font-size: clamp(13px, 2vw, 16px) !important;
     font-weight: 700 !important;
     letter-spacing: 0.3px !important;
-    padding: 14px 28px !important;
+    padding: 12px 24px !important;
     border-radius: 12px !important;
     box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35) !important;
     transition: all 0.2s ease !important;
@@ -698,7 +734,7 @@ div[data-testid="stPopover"] > button:hover {{
 /* Floating popover dialog window */
 div[data-testid="stPopoverBody"] {{
     max-width: 480px !important;
-    min-width: 360px !important;
+    min-width: min(360px, 90vw) !important;
     max-height: 80vh !important;
     border-radius: 18px !important;
     box-shadow: 0 16px 48px rgba(0,0,0,0.22) !important;
@@ -707,6 +743,71 @@ div[data-testid="stPopoverBody"] {{
     background: var(--ag-popover-bg) !important;
     color: var(--ag-text-primary) !important;
     overflow-y: auto !important;
+}}
+
+/* ── Responsive: Tablet (≤900px) ── */
+@media (max-width: 900px) {{
+    .ag-header {{
+        padding: 24px 18px 20px 18px;
+        border-radius: 14px;
+    }}
+    .kpi-card {{ padding: 14px 12px; }}
+    .health-banner {{ padding: 14px 16px; gap: 10px; }}
+    .empty-state {{ padding: 44px 24px; }}
+}}
+
+/* ── Responsive: Mobile (≤600px) ── */
+@media (max-width: 600px) {{
+    .ag-header {{
+        padding: 18px 12px 16px 12px;
+        border-radius: 10px;
+        margin-bottom: 16px;
+    }}
+    .kpi-card {{ padding: 12px 10px; border-radius: 12px; }}
+    .kpi-value {{ font-size: 24px; }}
+    .health-banner {{
+        padding: 12px 14px;
+        gap: 8px;
+        flex-direction: column;
+        align-items: flex-start;
+    }}
+    .health-icon {{ font-size: 28px; }}
+    .health-title {{ font-size: 15px; }}
+    .health-desc {{ font-size: 12px; }}
+    .variety-chip {{ padding: 8px 12px; font-size: 12px; }}
+    .section-hdr {{ font-size: 13px; }}
+    .rec-box {{ padding: 12px; font-size: 12px; }}
+    .st-card {{ padding: 14px; }}
+    .st-row {{ font-size: 12px; }}
+    .summary-box {{ font-size: 12px; }}
+    div[data-testid="stPopover"] {{
+        bottom: 16px !important;
+        right: 16px !important;
+    }}
+    div[data-testid="stPopover"] > button {{
+        padding: 10px 18px !important;
+        font-size: 13px !important;
+    }}
+}}
+
+/* ── Main content area: fluid max-width ── */
+.block-container {{
+    max-width: 1200px !important;
+    padding-left: clamp(12px, 3vw, 3rem) !important;
+    padding-right: clamp(12px, 3vw, 3rem) !important;
+    padding-top: 1.5rem !important;
+}}
+
+/* ── Images fully fluid ── */
+[data-testid="stImage"] img {{
+    max-width: 100% !important;
+    height: auto !important;
+    border-radius: 10px;
+}}
+
+/* ── Sidebar narrow on mobile via Streamlit's built-in collapse ── */
+[data-testid="stSidebar"] {{
+    min-width: 220px !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -721,6 +822,76 @@ st.markdown("""
   <span class='ag-pill'>Semantic Segmentation · AI Grading · Storage Prediction</span>
 </div>
 """, unsafe_allow_html=True)
+
+# ── Mode Selector (in main page) ──────────────────────────────────────────────
+_cur_mode = st.session_state.get("selected_workflow", "paper")
+_mc1, _mc2 = st.columns(2)
+with _mc1:
+    _paper_active = (_cur_mode == "paper")
+    st.markdown(
+        f"""<div class='mode-card {"mode-card-active" if _paper_active else "mode-card-inactive"}'
+             id='mode_paper'>
+          <div class='mode-icon'>🌾</div>
+          <div class='mode-label'>Research Paper Mode</div>
+          <div class='mode-desc'>Single variety · CornNet · Standard benchmark</div>
+        </div>""",
+        unsafe_allow_html=True
+    )
+    if st.button("Select Research Paper Mode", key="btn_mode_paper",
+                 use_container_width=True,
+                 type="primary" if _paper_active else "secondary"):
+        st.session_state["selected_workflow"] = "paper"
+        st.session_state["current_analysis"] = None
+        st.rerun()
+with _mc2:
+    _multi_active = (_cur_mode == "multi")
+    st.markdown(
+        f"""<div class='mode-card {"mode-card-active" if _multi_active else "mode-card-inactive"}'
+             id='mode_multi'>
+          <div class='mode-icon'>🔬</div>
+          <div class='mode-label'>Multi-Variety AI Mode</div>
+          <div class='mode-desc'>5 varieties · Auto-detect · Advanced analysis</div>
+        </div>""",
+        unsafe_allow_html=True
+    )
+    if st.button("Select Multi-Variety AI Mode", key="btn_mode_multi",
+                 use_container_width=True,
+                 type="primary" if _multi_active else "secondary"):
+        st.session_state["selected_workflow"] = "multi"
+        st.session_state["current_analysis"] = None
+        st.rerun()
+
+# ── Resolve mode-specific settings ────────────────────────────────────────────
+is_paper_mode = (st.session_state.get("selected_workflow", "paper") == "paper")
+if is_paper_mode:
+    is_pure_model = True
+    corn_variety_input = "🌽 Dent Corn (Yellow/White) — Commercial"
+else:
+    # Multi-Variety: show compact inline controls
+    with st.expander("⚙️ Multi-Variety Settings", expanded=False):
+        _engine = st.radio(
+            "Inference Engine",
+            ["🎯 CornNet (Recommended)", "🔬 Heuristic Filtered (Legacy)"],
+            index=0,
+            horizontal=True,
+            key="mv_engine"
+        )
+        is_pure_model = (_engine == "🎯 CornNet (Recommended)")
+        corn_variety_input = st.selectbox(
+            "Corn Variety",
+            [
+                "🔍 Auto-Detect Variety",
+                "🌽 Dent Corn (Yellow/White) — Commercial",
+                "🎨 Indian / Flint Corn (Multicoloured)",
+                "🍬 Sweet Corn (Pale Cream/Yellow)",
+                "🍿 Popcorn (Small Hard Kernels)",
+                "🔵 Blue / Black Corn (Hopi variety)",
+            ],
+            index=0,
+            key="mv_variety"
+        )
+
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
 # ── File Upload ───────────────────────────────────────────────────────────────
 uploaded_file = st.file_uploader(
