@@ -81,46 +81,41 @@ chatbot = st.session_state["_chatbot"]
 with st.sidebar:
     st.markdown("## 🌽 AgroGrow")
     st.caption("Post-Harvest Corn Quality & Storage AI")
-    st.markdown("---")
+    # Defaults
+    if "selected_theme" not in st.session_state:
+        st.session_state["selected_theme"] = "☀️ Clean Light Mode"
+    if "selected_workflow" not in st.session_state:
+        st.session_state["selected_workflow"] = "🌾 Research Paper Mode"
 
-    # 1. Explicit Theme Switcher
-    st.markdown("### 🎨 Display Theme")
-    theme_choice = st.radio(
-        "Display Theme",
-        options=["☀️ Clean Light Mode", "🌙 Dark Modern Mode"],
-        index=0 if st.session_state.get("selected_theme") == "☀️ Clean Light Mode" else 1,
-        key="theme_radio",
-        label_visibility="collapsed"
-    )
-    st.session_state["selected_theme"] = theme_choice
-    is_dark = (theme_choice == "🌙 Dark Modern Mode")
+    is_dark = (st.session_state.get("selected_theme") == "🌙 Dark Modern Mode")
+    is_paper_mode = st.session_state.get("selected_workflow", "").startswith("🌾")
 
-    # 2. Workflow / Application Mode
-    st.markdown("---")
-    st.markdown("### ⚙️ Workflow Mode")
-    workflow_choice = st.radio(
-        "Workflow Mode",
-        options=[
-            "🌾 Research Paper Mode (Single Variety + Shelf Life)",
-            "🔬 Multi-Variety AI Mode (5 Varieties + All Models)"
-        ],
-        index=0 if st.session_state.get("selected_workflow", "").startswith("🌾") or "selected_workflow" not in st.session_state else 1,
-        key="workflow_radio",
-        help="Research Paper Mode matches the exact paper benchmark: single standard fresh commercial/sweet corn variety + pure CornNet segmentation + USDA/ISO grading + Shelf-life forecasting."
-    )
-    st.session_state["selected_workflow"] = workflow_choice
-    is_paper_mode = workflow_choice.startswith("🌾")
+    # Row 1: Theme Buttons (Light / Dark)
+    t_c1, t_c2 = st.columns(2)
+    with t_c1:
+        if st.button("☀️ Light", use_container_width=True, type="primary" if not is_dark else "secondary", key="btn_theme_light"):
+            st.session_state["selected_theme"] = "☀️ Clean Light Mode"
+            st.rerun()
+    with t_c2:
+        if st.button("🌙 Dark", use_container_width=True, type="primary" if is_dark else "secondary", key="btn_theme_dark"):
+            st.session_state["selected_theme"] = "🌙 Dark Modern Mode"
+            st.rerun()
+
+    # Row 2: Workflow Mode Buttons (Paper Mode / Multi-AI)
+    w_c1, w_c2 = st.columns(2)
+    with w_c1:
+        if st.button("🌾 Paper Mode", use_container_width=True, type="primary" if is_paper_mode else "secondary", key="btn_wf_paper", help="Standard Single-Variety Fresh Sweet Corn + Shelf Life (Research Paper Benchmark)"):
+            st.session_state["selected_workflow"] = "🌾 Research Paper Mode"
+            st.rerun()
+    with w_c2:
+        if st.button("🔬 Multi-AI", use_container_width=True, type="primary" if not is_paper_mode else "secondary", key="btn_wf_multi", help="Multi-Variety AI Mode (5 Varieties + Auxiliary Models)"):
+            st.session_state["selected_workflow"] = "🔬 Multi-Variety AI Mode"
+            st.rerun()
 
     if is_paper_mode:
         is_pure_model = True
         corn_variety_input = "🌽 Dent Corn (Yellow/White) — Commercial"
-        st.markdown(
-            "<div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);padding:10px 14px;border-radius:10px;font-size:12.5px;color:var(--ag-text-secondary);margin-top:6px;'>"
-            "🌽 <strong>Single Target Variety:</strong><br>"
-            "<span style='color:var(--ag-text-muted);font-size:11.5px;'>Commercial Fresh Sweet Corn (<em>Zea mays</em>) — Research Paper Standard. Auxiliary variety classifier disabled.</span>"
-            "</div>",
-            unsafe_allow_html=True
-        )
+        st.caption("Target: Commercial Sweet Corn (*Zea mays*) + Shelf Life")
     else:
         # Multi-Variety Mode: Expose engine switcher & 5-variety dropdown
         st.markdown("---")
