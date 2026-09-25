@@ -177,12 +177,13 @@ if is_dark:
         --ag-hb-nocorn-desc: #cbd5e1;
         --ag-hb-nocorn-shadow: rgba(148, 163, 184, 0.15);
     }
+    /* ════ COMPREHENSIVE DARK MODE ════════════════════════════════════════ */
     .stApp {
         background-color: #0e1117 !important;
         color: #f8fafc !important;
     }
     .stApp p, .stApp span, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4,
-    .stApp div, .stApp li, .stApp td, .stApp th {
+    .stApp li, .stApp td, .stApp th {
         color: #f8fafc !important;
     }
     /* Fix Streamlit internal text elements in dark mode */
@@ -206,68 +207,125 @@ if is_dark:
     [data-testid="stSlider"] p, [data-testid="stSlider"] span { color: #e2e8f0 !important; }
     /* Fix caption / small text */
     .stCaption, small { color: #94a3b8 !important; }
-    /* Fix st.success / st.info / st.warning banners */
-    [data-testid="stAlert"] p, [data-testid="stAlert"] span { color: inherit !important; }
-    /* Fix table cells */
-    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { color: #f0f4f8 !important; }
+    /* ── Alert / info boxes (white bg in screenshot 2) ── */
+    [data-testid="stAlert"] {
+        background-color: #1e293b !important;
+        border-color: rgba(255,255,255,0.12) !important;
+    }
+    [data-testid="stAlert"] p, [data-testid="stAlert"] span { color: #e2e8f0 !important; }
+    div[data-baseweb="notification"] {
+        background-color: #1e293b !important;
+        border-color: rgba(255,255,255,0.12) !important;
+    }
+    div[data-baseweb="notification"] p,
+    div[data-baseweb="notification"] span { color: #e2e8f0 !important; }
+    /* ── DataFrames / Assessment History table (white in screenshot 2) ── */
+    [data-testid="stDataFrame"] > div { background-color: #1e293b !important; }
+    [data-testid="stDataFrame"] td { color: #e2e8f0 !important; background-color: #1e293b !important; }
+    [data-testid="stDataFrame"] th { color: #f0f4f8 !important; background-color: #273548 !important; }
+    .stDataFrame table, table.dataframe {
+        background-color: #1e293b !important; color: #e2e8f0 !important;
+    }
+    .stDataFrame table th, table.dataframe th {
+        background-color: #273548 !important; color: #f8fafc !important;
+        border-color: rgba(255,255,255,0.10) !important;
+    }
+    .stDataFrame table td, table.dataframe td {
+        background-color: #1e293b !important; color: #e2e8f0 !important;
+        border-color: rgba(255,255,255,0.06) !important;
+    }
+    /* ── Sidebar ── */
     [data-testid="stSidebar"] {
         background-color: #161b22 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
+        border-right: 1px solid rgba(255,255,255,0.10) !important;
     }
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3,
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] div {
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
         color: #f8fafc !important;
     }
-    [data-testid="stSidebar"] p[data-testid="stWidgetLabel"],
-    [data-testid="stSidebar"] .stCaption {
-        color: #94a3b8 !important;
+    [data-testid="stSidebar"] .stCaption p { color: #94a3b8 !important; }
+    /* ── Sidebar selectbox — fully dark (was invisible in screenshot 1) ── */
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div {
+        background-color: #0f172a !important;
+        color: #f8fafc !important;
+        border-color: rgba(255,255,255,0.18) !important;
     }
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] span,
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] p { color: #f8fafc !important; }
+    /* ── Main area selectboxes ── */
+    [data-testid="stSelectbox"] > div > div {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+        border-color: rgba(255,255,255,0.15) !important;
+    }
+    [data-testid="stSelectbox"] span, [data-testid="stSelectbox"] > div p { color: #f8fafc !important; }
+    /* Dropdown list */
+    ul[role="listbox"] { background-color: #1e293b !important; border-color: rgba(255,255,255,0.15) !important; }
+    ul[role="listbox"] li { color: #e2e8f0 !important; }
+    ul[role="listbox"] li:hover { background-color: #273548 !important; }
+    /* ── File uploader: drop zone + uploaded chip ── */
     [data-testid="stFileUploaderDropzone"] {
-        background-color: rgba(30, 41, 59, 0.6) !important;
-        border: 2px dashed rgba(255, 255, 255, 0.15) !important;
+        background-color: rgba(30,41,59,0.6) !important;
+        border: 2px dashed rgba(255,255,255,0.20) !important;
         border-radius: 14px !important;
     }
-    [data-testid="stFileUploaderDropzone"] * {
-        color: #cbd5e1 !important;
+    [data-testid="stFileUploaderDropzone"] * { color: #cbd5e1 !important; }
+    /* Uploaded file name chip (dark bg in screenshot 1) */
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderFile"],
+    [data-testid="stFileUploader"] li, [data-testid="stFileUploader"] section > div {
+        background-color: #1e293b !important;
+        border-color: rgba(255,255,255,0.12) !important;
     }
+    [data-testid="stFileUploader"] span, [data-testid="stFileUploader"] p,
+    [data-testid="stFileUploader"] small { color: #cbd5e1 !important; }
+    /* ── Segmented control (Cob Framing Mode) ── */
+    [data-testid="stSegmentedControl"] {
+        background-color: #1e293b !important;
+        border-color: rgba(255,255,255,0.12) !important;
+    }
+    [data-testid="stSegmentedControl"] button {
+        background-color: transparent !important;
+        color: #94a3b8 !important;
+    }
+    [data-testid="stSegmentedControl"] button[aria-selected="true"] {
+        background-color: #334155 !important;
+        color: #f8fafc !important;
+    }
+    [data-testid="stSegmentedControl"] span { color: inherit !important; }
+    /* ── Expander ── */
+    [data-testid="stExpander"] {
+        background-color: rgba(30,41,59,0.5) !important;
+        border-color: rgba(255,255,255,0.10) !important;
+    }
+    [data-testid="stExpander"] summary p,
+    [data-testid="stExpander"] summary span { color: #e2e8f0 !important; }
+    /* ── Chat ── */
     [data-testid="stChatMessage"] {
         background-color: #1e293b !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 12px !important;
     }
-    [data-testid="stChatMessage"] p, [data-testid="stChatMessage"] span {
-        color: #f0f4f8 !important;
-    }
-    /* Fix upload button text */
-    [data-testid="stFileUploaderDropzoneInput"] + div span { color: #cbd5e1 !important; }
-    /* Fix segmented control text */
-    [data-testid="stSegmentedControl"] span { color: #e2e8f0 !important; }
-    /* Section headers and framing headers in dark */
+    [data-testid="stChatMessage"] p, [data-testid="stChatMessage"] span { color: #e2e8f0 !important; }
+    /* ── Section / framing headers ── */
     .section-hdr, .framing-hdr { color: #f0f4f8 !important; }
-    /* Grade badges fix for dark */
+    /* ── Grade badges ── */
     .grade-A { background: rgba(22,101,52,0.4) !important; color: #86efac !important; }
     .grade-B { background: rgba(30,64,175,0.4) !important; color: #93c5fd !important; }
     .grade-C { background: rgba(133,77,14,0.4) !important; color: #fde68a !important; }
     .grade-D { background: rgba(153,27,27,0.4) !important; color: #fca5a5 !important; }
-
-    /* ── Dark mode: ALL secondary (inactive) buttons — auto dark background ──
-       Exception: popover button (AI chatbot) keeps its green gradient          */
-    [data-testid="stBaseButton-secondary"]:not([data-testid="stPopover"] button) {
+    /* ── BUTTONS ────────────────────────────────────────────────────────── */
+    /* Secondary — dark slate */
+    [data-testid="stBaseButton-secondary"] {
         background-color: #1e293b !important;
         color: #e2e8f0 !important;
         border-color: rgba(255,255,255,0.15) !important;
     }
-    [data-testid="stBaseButton-secondary"]:not([data-testid="stPopover"] button):hover {
+    [data-testid="stBaseButton-secondary"]:hover {
         background-color: #273548 !important;
         color: #f8fafc !important;
-        border-color: rgba(255,255,255,0.25) !important;
+        border-color: rgba(255,255,255,0.28) !important;
     }
-    /* ── Dark mode: primary (active) buttons keep green ── */
+    /* Primary — green gradient */
     [data-testid="stBaseButton-primary"] {
         background: linear-gradient(135deg, #15803d 0%, #16a34a 50%, #059669 100%) !important;
         color: #ffffff !important;
@@ -276,21 +334,11 @@ if is_dark:
     [data-testid="stBaseButton-primary"]:hover {
         background: linear-gradient(135deg, #166534 0%, #15803d 50%, #047857 100%) !important;
     }
-    /* ── Dark mode: AI chatbot floating popover button — force green visible ── */
-    div[data-testid="stPopover"] > button {
-        background: linear-gradient(135deg, #16a34a 0%, #059669 100%) !important;
-        color: #ffffff !important;
-        border: 2px solid rgba(255,255,255,0.6) !important;
-        box-shadow: 0 6px 24px rgba(22, 163, 74, 0.55) !important;
-    }
-    div[data-testid="stPopover"] > button:hover {
-        background: linear-gradient(135deg, #15803d 0%, #047857 100%) !important;
-        box-shadow: 0 10px 32px rgba(22, 163, 74, 0.70) !important;
-    }
-    /* ── Dark mode: sidebar theme-toggle icon button exception ── */
+    /* Sidebar theme-toggle — transparent */
     [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
     [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
         background: transparent !important;
+        background-color: transparent !important;
         border: 1px solid rgba(255,255,255,0.18) !important;
         color: #f8fafc !important;
     }
@@ -299,25 +347,17 @@ if is_dark:
         background: rgba(255,255,255,0.08) !important;
         border-color: #16a34a !important;
     }
-    /* ── Dark mode: segmented control buttons ── */
-    [data-testid="stSegmentedControl"] button {
-        background-color: #1e293b !important;
-        color: #e2e8f0 !important;
+    /* AI Chatbot floating button — force green always */
+    div[data-testid="stPopover"] > button {
+        background: linear-gradient(135deg, #16a34a 0%, #059669 100%) !important;
+        background-color: #16a34a !important;
+        color: #ffffff !important;
+        border: 2px solid rgba(255,255,255,0.6) !important;
+        box-shadow: 0 6px 24px rgba(22,163,74,0.55) !important;
     }
-    [data-testid="stSegmentedControl"] button[aria-selected="true"] {
-        background-color: #334155 !important;
-        color: #f8fafc !important;
-    }
-    /* ── Dark mode: expander ── */
-    [data-testid="stExpander"] {
-        background-color: rgba(30,41,59,0.6) !important;
-        border-color: rgba(255,255,255,0.12) !important;
-    }
-    /* ── Dark mode: selectbox dropdown ── */
-    [data-testid="stSelectbox"] > div > div {
-        background-color: #1e293b !important;
-        color: #f8fafc !important;
-        border-color: rgba(255,255,255,0.15) !important;
+    div[data-testid="stPopover"] > button:hover {
+        background: linear-gradient(135deg, #15803d 0%, #047857 100%) !important;
+        box-shadow: 0 10px 32px rgba(22,163,74,0.70) !important;
     }
     """
 else:
