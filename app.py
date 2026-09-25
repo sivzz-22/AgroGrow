@@ -255,13 +255,14 @@ if is_dark:
     .grade-C { background: rgba(133,77,14,0.4) !important; color: #fde68a !important; }
     .grade-D { background: rgba(153,27,27,0.4) !important; color: #fca5a5 !important; }
 
-    /* ── Dark mode: ALL secondary (inactive) buttons — auto dark background ── */
-    [data-testid="stBaseButton-secondary"] {
+    /* ── Dark mode: ALL secondary (inactive) buttons — auto dark background ──
+       Exception: popover button (AI chatbot) keeps its green gradient          */
+    [data-testid="stBaseButton-secondary"]:not([data-testid="stPopover"] button) {
         background-color: #1e293b !important;
         color: #e2e8f0 !important;
         border-color: rgba(255,255,255,0.15) !important;
     }
-    [data-testid="stBaseButton-secondary"]:hover {
+    [data-testid="stBaseButton-secondary"]:not([data-testid="stPopover"] button):hover {
         background-color: #273548 !important;
         color: #f8fafc !important;
         border-color: rgba(255,255,255,0.25) !important;
@@ -274,6 +275,17 @@ if is_dark:
     }
     [data-testid="stBaseButton-primary"]:hover {
         background: linear-gradient(135deg, #166534 0%, #15803d 50%, #047857 100%) !important;
+    }
+    /* ── Dark mode: AI chatbot floating popover button — force green visible ── */
+    div[data-testid="stPopover"] > button {
+        background: linear-gradient(135deg, #16a34a 0%, #059669 100%) !important;
+        color: #ffffff !important;
+        border: 2px solid rgba(255,255,255,0.6) !important;
+        box-shadow: 0 6px 24px rgba(22, 163, 74, 0.55) !important;
+    }
+    div[data-testid="stPopover"] > button:hover {
+        background: linear-gradient(135deg, #15803d 0%, #047857 100%) !important;
+        box-shadow: 0 10px 32px rgba(22, 163, 74, 0.70) !important;
     }
     /* ── Dark mode: sidebar theme-toggle icon button exception ── */
     [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
