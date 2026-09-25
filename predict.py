@@ -25,7 +25,8 @@ def run_pipeline(
     temperature: float = 25.0,
     humidity: float = 70.0,
     storage_type: str = "Open Air",
-    assistant_query: Optional[str] = None
+    assistant_query: Optional[str] = None,
+    paper_mode: bool = False
 ) -> dict:
     """
     Executes the full assessment pipeline for a single image.
@@ -35,8 +36,8 @@ def run_pipeline(
         raise FileNotFoundError(f"Input image not found: {image_path}")
         
     # 1. Image Segmentation Inference & Variety Detection
-    predictor = CornPredictor()
-    mask, overlay, _, confidence = predictor.predict_single(image_path)
+    predictor = CornPredictor(paper_mode=paper_mode)
+    mask, overlay, _, confidence = predictor.predict_single(image_path, pure_model=paper_mode)
     detected_variety = predictor.last_detected_variety
     
     # Save the overlay image temporarily or in the results folder
@@ -133,6 +134,7 @@ def main():
     parser.add_argument("--humidity", type=float, default=70.0, help="Storage relative humidity in percentage")
     parser.add_argument("--storage", type=str, default="Open Air", choices=global_config.storage_types, help="Type of storage container")
     parser.add_argument("--query", type=str, default="Is this batch suitable for export?", help="Question for the AI Assistant")
+    parser.add_argument("--paper-mode", action="store_true", help="Use dedicated Research Paper Model weights (weights/paper_model.pth) with pure deep learning inference")
     
     args = parser.parse_args()
     
@@ -142,7 +144,8 @@ def main():
             temperature=args.temp,
             humidity=args.humidity,
             storage_type=args.storage,
-            assistant_query=args.query
+            assistant_query=args.query,
+            paper_mode=args.paper_mode
         )
         
         # Display summary in stdout

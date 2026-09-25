@@ -297,9 +297,23 @@ def clean_prediction_mask(img_rgb: np.ndarray,
 
 
 class CornPredictor:
-    """Loads CornNet weights and performs inference with automatic CPU fallback."""
+    """Loads CornNet weights and performs inference with automatic CPU fallback.
 
-    def __init__(self, weights_path: Optional[Path] = None, device: Optional[str] = None):
+    Args:
+        paper_mode (bool): When True, loads weights/paper_model.pth — the dedicated
+                           single-variety Research Paper Model. Falls back to
+                           best_model.pth with a warning if paper_model.pth is absent.
+                           Run  python train_paper.py --from-scratch  to train it.
+        weights_path: Override path (ignores paper_mode when set).
+        device: Force 'cuda' or 'cpu'.
+    """
+    PAPER_WEIGHTS_PATH   = global_config.weights_dir / "paper_model.pth"
+    GENERAL_WEIGHTS_PATH = global_config.weights_dir / "best_model.pth"
+
+    def __init__(self,
+                 weights_path: Optional[Path] = None,
+                 device: Optional[str] = None,
+                 paper_mode: bool = False):
         if device is not None:
             self.device = torch.device(device)
         else:
@@ -315,12 +329,30 @@ class CornPredictor:
 
         self.model = CornNet(num_classes=global_config.num_classes)
         self.last_detected_variety = "Standard Dent Corn (Yellow/White)"
+        self.paper_mode = paper_mode
 
-        path = weights_path or (global_config.weights_dir / "best_model.pth")
+        # ── Determine which weights to load ──────────────────────────────
+        if weights_path is not None:
+            path = Path(weights_path)
+        elif paper_mode:
+            if self.PAPER_WEIGHTS_PATH.exists():
+                path = self.PAPER_WEIGHTS_PATH
+                logger.info("Research Paper Mode: loading dedicated paper_model.pth")
+            else:
+                path = self.GENERAL_WEIGHTS_PATH
+                logger.warning(
+                    "paper_model.pth not found — paper model has not been trained yet.\n"
+                    "Falling back to best_model.pth.\n"
+                    "Run:  python train_paper.py --from-scratch\n"
+                    "to train the dedicated single-variety paper model."
+                )
+        else:
+            path = self.GENERAL_WEIGHTS_PATH
+
         if path.exists():
             ckpt = torch.load(path, map_location=self.device, weights_only=False)
             self.model.load_state_dict(ckpt["model_state_dict"])
-            logger.info(f"Loaded predictor model weights from: {path} (device: {self.device})")
+            logger.info(f"Loaded weights: {path.name}  (device: {self.device})")
         else:
             logger.warning(f"Weights not found at {path}. Using random init.")
 
@@ -390,18 +422,26 @@ class CornPredictor:
         W, H = global_config.input_size[1], global_config.input_size[0]
         img_display = cv2.resize(img_cropped, (W, H))
 
-        if pure_model:
-            # ── Pure Deep Learning Mode: Use trained CornNet model directly ──
+        if self.paper_mode or pure_model:
+            # ── Research Paper Mode / Pure Deep Learning ─────────────────
+            # Raw model argmax — no heuristics, no variety classifier.
+            # For paper_mode this is the dedicated paper_model.pth output.
+            # For pure_model (multi-variety CornNet) this is best_model.pth output.
             mask = raw_mask.copy()
-            variety_name = "Commercial Dent Corn (Zea mays indentata)"
-            try:
-                clf = _get_variety_clf()
-                if clf is not None and clf.is_trained:
-                    _k, _disp, _conf = clf.classify(img_display)
-                    if _disp and _k not in ("unknown", "uncertain"):
-                        variety_name = _disp
-            except Exception as _e:
-                logger.debug(f"Variety classification info: {_e}")
+            if self.paper_mode:
+                # Single-variety: always commercial dent/sweet corn
+                variety_name = "Commercial Sweet Corn (Zea mays) — Research Paper"
+            else:
+                # pure_model multi-variety: still try variety classifier for display
+                variety_name = "Commercial Dent Corn (Zea mays indentata)"
+                try:
+                    clf = _get_variety_clf()
+                    if clf is not None and clf.is_trained:
+                        _k, _disp, _conf = clf.classify(img_display)
+                        if _disp and _k not in ("unknown", "uncertain"):
+                            variety_name = _disp
+                except Exception as _e:
+                    logger.debug(f"Variety classification info: {_e}")
         else:
             mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
 

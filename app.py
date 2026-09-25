@@ -877,6 +877,25 @@ is_paper_mode = (st.session_state.get("selected_workflow", "paper") == "paper")
 if is_paper_mode:
     is_pure_model = True
     corn_variety_input = "🌽 Dent Corn (Yellow/White) — Commercial"
+    _paper_weights = global_config.weights_dir / "paper_model.pth"
+    if _paper_weights.exists():
+        st.markdown(
+            "<div style='background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); "
+            "border-radius:10px; padding:10px 16px; margin:8px 0; font-size:13px; color:inherit;'>"
+            "🌾 <b>Research Paper Mode Active:</b> Dedicated single-variety model "
+            "<code>weights/paper_model.pth</code> is loaded. Pure deep learning segmentation "
+            "(no heuristic filters or variety overrides).</div>",
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            "<div style='background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); "
+            "border-radius:10px; padding:10px 16px; margin:8px 0; font-size:13px; color:inherit;'>"
+            "🌾 <b>Research Paper Mode Active:</b> Pure single-variety CornNet pipeline. "
+            "<i>(Dedicated weights <code>weights/paper_model.pth</code> not yet trained — "
+            "currently using <code>best_model.pth</code>. Run <code>python train_paper.py</code> to train it.)</i></div>",
+            unsafe_allow_html=True
+        )
 else:
     # Multi-Variety: show compact inline controls
     with st.expander("⚙️ Multi-Variety Settings", expanded=False):
@@ -987,9 +1006,11 @@ if uploaded_file is not None:
     if st.button("🔍  Run Quality Assessment Pipeline", use_container_width=True, type="primary", key="btn_run_assessment"):
         with st.spinner("Analysing kernels — please wait..."):
             try:
-                predictor = CornPredictor(device=use_device)
+                predictor = CornPredictor(device=use_device, paper_mode=is_paper_mode)
                 mask, overlay, _, confidence = predictor.predict_single(
-                    inference_img_path, auto_crop=False, corn_variety=corn_variety_input, pure_model=is_pure_model
+                    inference_img_path, auto_crop=False,
+                    corn_variety=corn_variety_input,
+                    pure_model=is_pure_model
                 )
                 global_config.results_dir.mkdir(parents=True, exist_ok=True)
                 overlay_temp_path = global_config.results_dir / f"{img_path.stem}_overlay.png"
