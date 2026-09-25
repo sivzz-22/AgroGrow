@@ -254,6 +254,59 @@ if is_dark:
     .grade-B { background: rgba(30,64,175,0.4) !important; color: #93c5fd !important; }
     .grade-C { background: rgba(133,77,14,0.4) !important; color: #fde68a !important; }
     .grade-D { background: rgba(153,27,27,0.4) !important; color: #fca5a5 !important; }
+
+    /* ── Dark mode: ALL secondary (inactive) buttons — auto dark background ── */
+    [data-testid="stBaseButton-secondary"] {
+        background-color: #1e293b !important;
+        color: #e2e8f0 !important;
+        border-color: rgba(255,255,255,0.15) !important;
+    }
+    [data-testid="stBaseButton-secondary"]:hover {
+        background-color: #273548 !important;
+        color: #f8fafc !important;
+        border-color: rgba(255,255,255,0.25) !important;
+    }
+    /* ── Dark mode: primary (active) buttons keep green ── */
+    [data-testid="stBaseButton-primary"] {
+        background: linear-gradient(135deg, #15803d 0%, #16a34a 50%, #059669 100%) !important;
+        color: #ffffff !important;
+        border-color: #16a34a !important;
+    }
+    [data-testid="stBaseButton-primary"]:hover {
+        background: linear-gradient(135deg, #166534 0%, #15803d 50%, #047857 100%) !important;
+    }
+    /* ── Dark mode: sidebar theme-toggle icon button exception ── */
+    [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
+    [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+        background: transparent !important;
+        border: 1px solid rgba(255,255,255,0.18) !important;
+        color: #f8fafc !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover,
+    [data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
+        background: rgba(255,255,255,0.08) !important;
+        border-color: #16a34a !important;
+    }
+    /* ── Dark mode: segmented control buttons ── */
+    [data-testid="stSegmentedControl"] button {
+        background-color: #1e293b !important;
+        color: #e2e8f0 !important;
+    }
+    [data-testid="stSegmentedControl"] button[aria-selected="true"] {
+        background-color: #334155 !important;
+        color: #f8fafc !important;
+    }
+    /* ── Dark mode: expander ── */
+    [data-testid="stExpander"] {
+        background-color: rgba(30,41,59,0.6) !important;
+        border-color: rgba(255,255,255,0.12) !important;
+    }
+    /* ── Dark mode: selectbox dropdown ── */
+    [data-testid="stSelectbox"] > div > div {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+        border-color: rgba(255,255,255,0.15) !important;
+    }
     """
 else:
     theme_css = """
