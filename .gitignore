@@ -11,15 +11,16 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Deep Learning Weights & ML Models (Deployment weights tracked via Git LFS)
-weights/*
-!weights/best_model.pth
-!weights/variety_classifier.pth
-!weights/best_storage_model.pkl
-!weights/variety_classifier_history.json
+# Deep Learning Weights — production models tracked via Git LFS
+# Excluded (backups, checkpoints, legacy runs):
+weights/backup_*
+weights/checkpoint.pth
+weights/paper_checkpoint.pth
+weights/best_model_run1_epoch100.pth
+weights/variety_classifier_history.json
 *.h5
 
-# Raw & Processed Datasets
+# Raw & Processed Datasets (too large for repo)
 AgroGrow/dataset/
 dataset/
 DataSet/
@@ -38,6 +39,9 @@ reports/*.pdf
 # IDE / OS settings
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
+
 # Environment and secret keys
 .env
 *.env

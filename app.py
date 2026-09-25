@@ -181,9 +181,35 @@ if is_dark:
         background-color: #0e1117 !important;
         color: #f8fafc !important;
     }
-    .stApp p, .stApp span, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
-        color: #f8fafc;
+    .stApp p, .stApp span, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp h4,
+    .stApp div, .stApp li, .stApp td, .stApp th {
+        color: #f8fafc !important;
     }
+    /* Fix Streamlit internal text elements in dark mode */
+    .stMarkdown p, .stMarkdown span, .stMarkdown li, .stMarkdown td,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stMarkdownContainer"] li {
+        color: #f0f4f8 !important;
+    }
+    /* Fix widget labels */
+    .stSelectbox label, .stSlider label, .stRadio label,
+    .stTextInput label, .stFileUploader label, .stExpander label,
+    [data-testid="stWidgetLabel"] { color: #e2e8f0 !important; }
+    /* Fix selectbox/dropdown text */
+    [data-testid="stSelectbox"] div, [data-testid="stSelectbox"] span { color: #f8fafc !important; }
+    /* Fix expander */
+    [data-testid="stExpander"] summary, [data-testid="stExpander"] p { color: #f0f4f8 !important; }
+    /* Fix metric values */
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { color: #f8fafc !important; }
+    /* Fix slider values */
+    [data-testid="stSlider"] p, [data-testid="stSlider"] span { color: #e2e8f0 !important; }
+    /* Fix caption / small text */
+    .stCaption, small { color: #94a3b8 !important; }
+    /* Fix st.success / st.info / st.warning banners */
+    [data-testid="stAlert"] p, [data-testid="stAlert"] span { color: inherit !important; }
+    /* Fix table cells */
+    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { color: #f0f4f8 !important; }
     [data-testid="stSidebar"] {
         background-color: #161b22 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
@@ -193,7 +219,8 @@ if is_dark:
     [data-testid="stSidebar"] h3,
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] label {
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] div {
         color: #f8fafc !important;
     }
     [data-testid="stSidebar"] p[data-testid="stWidgetLabel"],
@@ -213,6 +240,20 @@ if is_dark:
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
         border-radius: 12px !important;
     }
+    [data-testid="stChatMessage"] p, [data-testid="stChatMessage"] span {
+        color: #f0f4f8 !important;
+    }
+    /* Fix upload button text */
+    [data-testid="stFileUploaderDropzoneInput"] + div span { color: #cbd5e1 !important; }
+    /* Fix segmented control text */
+    [data-testid="stSegmentedControl"] span { color: #e2e8f0 !important; }
+    /* Section headers and framing headers in dark */
+    .section-hdr, .framing-hdr { color: #f0f4f8 !important; }
+    /* Grade badges fix for dark */
+    .grade-A { background: rgba(22,101,52,0.4) !important; color: #86efac !important; }
+    .grade-B { background: rgba(30,64,175,0.4) !important; color: #93c5fd !important; }
+    .grade-C { background: rgba(133,77,14,0.4) !important; color: #fde68a !important; }
+    .grade-D { background: rgba(153,27,27,0.4) !important; color: #fca5a5 !important; }
     """
 else:
     theme_css = """
@@ -791,14 +832,31 @@ div[data-testid="stPopoverBody"] {{
         padding: 10px 18px !important;
         font-size: 13px !important;
     }}
+    /* Stack columns vertically on mobile */
+    [data-testid="stColumns"] > div {{
+        min-width: 100% !important;
+    }}
+    button.ag-mode-card-btn {{
+        min-height: 70px !important;
+        font-size: 13px !important;
+        padding: 12px 10px !important;
+    }}
+}}
+
+/* ── Responsive: Extra Small (≤400px) ── */
+@media (max-width: 400px) {{
+    .ag-title {{ font-size: 22px; }}
+    .ag-subtitle {{ font-size: 11px; }}
+    .kpi-value {{ font-size: 20px; }}
+    .kpi-label {{ font-size: 9px; }}
 }}
 
 /* ── Main content area: fluid max-width ── */
 .block-container {{
     max-width: 1200px !important;
-    padding-left: clamp(12px, 3vw, 3rem) !important;
-    padding-right: clamp(12px, 3vw, 3rem) !important;
-    padding-top: 1.5rem !important;
+    padding-left: clamp(8px, 2.5vw, 3rem) !important;
+    padding-right: clamp(8px, 2.5vw, 3rem) !important;
+    padding-top: 1rem !important;
 }}
 
 /* ── Images fully fluid ── */
@@ -808,9 +866,18 @@ div[data-testid="stPopoverBody"] {{
     border-radius: 10px;
 }}
 
-/* ── Sidebar narrow on mobile via Streamlit's built-in collapse ── */
+/* ── Sidebar collapse gracefully on mobile ── */
 [data-testid="stSidebar"] {{
-    min-width: 220px !important;
+    min-width: 200px !important;
+}}
+@media (max-width: 768px) {{
+    [data-testid="stSidebar"] {{
+        min-width: 0 !important;
+    }}
+    .block-container {{
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -832,7 +899,7 @@ _mc1, _mc2 = st.columns(2)
 with _mc1:
     _paper_active = (_cur_mode == "paper")
     if st.button(
-        "🌾\nResearch Paper Mode\nSingle variety · CornNet · Standard",
+        "🌾  Zea Mays (CornNet)",
         key="btn_mode_paper",
         use_container_width=True,
         type="primary" if _paper_active else "secondary"
@@ -843,7 +910,7 @@ with _mc1:
 with _mc2:
     _multi_active = (_cur_mode == "multi")
     if st.button(
-        "🔬\nMulti-Variety AI Mode\n5 varieties · Auto-detect · Advanced",
+        "🔬  Multi Variety (AgroGrow)",
         key="btn_mode_multi",
         use_container_width=True,
         type="primary" if _multi_active else "secondary"
@@ -862,7 +929,7 @@ st.markdown("""
     var tagged = 0;
     els.forEach(function(el) {
         var t = el.innerText || el.textContent || "";
-        if (t.includes("Research Paper Mode") || t.includes("Multi-Variety AI Mode")) {
+        if (t.includes("Zea Mays") || t.includes("Multi Variety")) {
             el.classList.add("ag-mode-card-btn");
             tagged++;
         }
