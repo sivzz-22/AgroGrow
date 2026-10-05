@@ -423,26 +423,31 @@ class CornPredictor:
         img_display = cv2.resize(img_cropped, (W, H))
 
         if self.paper_mode or pure_model:
-            # ── Research Paper Mode / Pure Deep Learning ─────────────────
-            # Raw model argmax — no heuristics, no variety classifier.
-            # For paper_mode this is the dedicated paper_model.pth output.
-            # For pure_model (multi-variety CornNet) this is best_model.pth output.
-            mask = raw_mask.copy()
+            # ── Pure Deep Learning — RAW CornNet argmax, ZERO heuristics ────────
+            # Both Zea Mays (paper_model.pth) and Multi Variety (best_model.pth)
+            # use this path. The neural network output is used AS-IS.
+            # MobileNet variety classifier runs AFTER the mask is finalized —
+            # purely to produce a human-readable variety display name.
+            # It has ZERO effect on the segmentation mask.
+            mask = raw_mask.copy()  # Final mask = pure CornNet output
+
             if self.paper_mode:
-                # Single-variety: always commercial dent/sweet corn
                 variety_name = "Commercial Sweet Corn (Zea mays) — Research Paper"
             else:
-                # pure_model multi-variety: still try variety classifier for display
+                # Start with a default variety label
                 variety_name = "Commercial Dent Corn (Zea mays indentata)"
+                # Try MobileNet — display only, mask is already finalized above
                 try:
                     clf = _get_variety_clf()
                     if clf is not None and clf.is_trained:
                         _k, _disp, _conf = clf.classify(img_display)
-                        if _disp and _k not in ("unknown", "uncertain"):
+                        if _disp and _k not in ("unknown", "uncertain") and _conf >= 0.55:
                             variety_name = _disp
+                            logger.info(f"MobileNet variety (display only): {_disp} ({_conf:.1%})")
                 except Exception as _e:
-                    logger.debug(f"Variety classification info: {_e}")
+                    logger.debug(f"Variety classification info (non-critical): {_e}")
         else:
+            # ── Legacy heuristic mode (not used in UI anymore) ───────────────
             mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
 
         self.last_detected_variety = variety_name

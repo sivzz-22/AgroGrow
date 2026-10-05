@@ -1069,18 +1069,12 @@ if is_paper_mode:
             unsafe_allow_html=True
         )
 else:
-    # Multi-Variety: show compact inline controls
+    # Multi-Variety mode — always uses pure CornNet segmentation
+    # MobileNet is used ONLY to identify and display the corn variety name
+    is_pure_model = True  # Always pure neural network — no heuristics
     with st.expander("⚙️ Multi-Variety Settings", expanded=False):
-        _engine = st.radio(
-            "Inference Engine",
-            ["🎯 CornNet (Recommended)", "🔬 Heuristic Filtered (Legacy)"],
-            index=0,
-            horizontal=True,
-            key="mv_engine"
-        )
-        is_pure_model = (_engine == "🎯 CornNet (Recommended)")
         corn_variety_input = st.selectbox(
-            "Corn Variety",
+            "Corn Variety (for display label)",
             [
                 "🔍 Auto-Detect Variety",
                 "🌽 Dent Corn (Yellow/White) — Commercial",
@@ -1092,6 +1086,15 @@ else:
             index=0,
             key="mv_variety"
         )
+    st.markdown(
+        "<div style='background:rgba(59,130,246,0.10); border:1px solid rgba(59,130,246,0.30); "
+        "border-radius:10px; padding:10px 16px; margin:6px 0; font-size:13px; color:inherit;'>"
+        "🔬 <b>Multi Variety Mode:</b> Pure CornNet deep learning segmentation — "
+        "same neural network quality as Zea Mays mode. "
+        "MobileNet variety classifier identifies corn type for display only."
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
