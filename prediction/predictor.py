@@ -327,7 +327,6 @@ class CornPredictor:
                     logger.warning(f"CUDA context probe failed ({e}). Falling back to CPU.")
                     self.device = torch.device("cpu")
 
-        self.model = CornNet(num_classes=global_config.num_classes)
         self.last_detected_variety = "Standard Dent Corn (Yellow/White)"
         self.paper_mode = paper_mode
 
@@ -343,17 +342,35 @@ class CornPredictor:
                 logger.warning(
                     "paper_model.pth not found — paper model has not been trained yet.\n"
                     "Falling back to best_model.pth.\n"
-                    "Run:  python train_paper.py --from-scratch\n"
-                    "to train the dedicated single-variety paper model."
+                    "Run:  python train_upgraded.py\n"
+                    "to train the dedicated upgraded model."
                 )
         else:
             path = self.GENERAL_WEIGHTS_PATH
 
         if path.exists():
             ckpt = torch.load(path, map_location=self.device, weights_only=False)
-            self.model.load_state_dict(ckpt["model_state_dict"])
-            logger.info(f"Loaded weights: {path.name}  (device: {self.device})")
+            state_dict = ckpt.get("model_state_dict", ckpt)
+            arch = ckpt.get("architecture", "") if isinstance(ckpt, dict) else ""
+
+            # Detect SMP U-Net vs legacy CornNet
+            is_smp = ("smp" in str(arch).lower()) or any(k.startswith("encoder.") for k in state_dict.keys())
+            if is_smp:
+                try:
+                    from AgroGrow.models.model_builder import build_model
+                    self.model = build_model(num_classes=global_config.num_classes, encoder="resnet34", encoder_weights=None)
+                    self.model.load_state_dict(state_dict)
+                    logger.info(f"Loaded SMP ResNet34 weights: {path.name}  (device: {self.device})")
+                except Exception as e:
+                    logger.warning(f"Failed to load as SMP ({e}), falling back to CornNet")
+                    self.model = CornNet(num_classes=global_config.num_classes)
+                    self.model.load_state_dict(state_dict, strict=False)
+            else:
+                self.model = CornNet(num_classes=global_config.num_classes)
+                self.model.load_state_dict(state_dict)
+                logger.info(f"Loaded CornNet weights: {path.name}  (device: {self.device})")
         else:
+            self.model = CornNet(num_classes=global_config.num_classes)
             logger.warning(f"Weights not found at {path}. Using random init.")
 
         self.model.to(self.device).eval()
