@@ -1098,12 +1098,37 @@ else:
 
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-# ── File Upload ───────────────────────────────────────────────────────────────
-uploaded_file = st.file_uploader(
-    "📁 Upload Corn Cob Image (JPG, JPEG, PNG, WEBP, BMP, etc.)",
-    type=["jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif"],
-    help="Upload a photograph of a corn cob in any format. The system automatically detects and analyzes the ear."
-)
+# ── Image Input: Upload or Camera ─────────────────────────────────────────────
+st.markdown("<p class='section-hdr'>📸 Provide Corn Cob Image</p>", unsafe_allow_html=True)
+_tab_upload, _tab_camera = st.tabs(["📁  Upload Image", "📷  Scan with Camera"])
+
+uploaded_file = None
+camera_file   = None
+
+with _tab_upload:
+    st.markdown(
+        "<p style='font-size:13px; color:var(--ag-text-muted); margin-bottom:8px;'>"
+        "Take a clear photo of the corn cob and upload it below.</p>",
+        unsafe_allow_html=True
+    )
+    uploaded_file = st.file_uploader(
+        "Choose image file",
+        type=["jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif"],
+        label_visibility="collapsed",
+        help="Supports JPG, PNG, WEBP, BMP formats."
+    )
+
+with _tab_camera:
+    st.markdown(
+        "<p style='font-size:13px; color:var(--ag-text-muted); margin-bottom:8px;'>"
+        "Point your camera at the corn cob and tap the capture button.</p>",
+        unsafe_allow_html=True
+    )
+    camera_file = st.camera_input("Capture corn cob photo", label_visibility="collapsed")
+
+# Merge: camera takes priority if both provided
+active_file = camera_file if camera_file is not None else uploaded_file
+uploaded_file = active_file  # rest of code uses uploaded_file
 
 if uploaded_file is not None:
     # Invalidate cache on new image
@@ -1135,16 +1160,16 @@ if uploaded_file is not None:
     _ax, _ay, _aw, _ah = _auto_bbox
     _is_full = (_aw >= _W * 0.95 and _ah >= _H * 0.95)
 
-    # ── Framing mode ─────────────────────────────────────────────────────────
-    st.markdown("<p class='framing-hdr'>✂️ Cob Framing Mode</p>", unsafe_allow_html=True)
-    crop_mode = st.segmented_control(
-        "Cob Framing Mode",
-        options=["🌽 Auto Crop Ear", "📷 Full Image"],
-        default=st.session_state.get("last_crop_mode", "🌽 Auto Crop Ear"),
-        label_visibility="collapsed"
-    )
+    # ── Framing mode (simple, collapsed) ────────────────────────────────────
+    with st.expander("✂️ Crop Options", expanded=False):
+        crop_mode = st.segmented_control(
+            "Framing",
+            options=["🌽 Auto Crop Ear", "📷 Full Image"],
+            default=st.session_state.get("last_crop_mode", "🌽 Auto Crop Ear"),
+            label_visibility="collapsed"
+        )
     if not crop_mode:
-        crop_mode = "🌽 Auto Crop Ear"
+        crop_mode = st.session_state.get("last_crop_mode", "🌽 Auto Crop Ear")
 
     if st.session_state.get("last_crop_mode") != crop_mode:
         st.session_state.last_crop_mode = crop_mode
@@ -1178,7 +1203,7 @@ if uploaded_file is not None:
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ── Run Analysis Button (Immediately below the images) ────────────────────
-    if st.button("🔍  Run Quality Assessment Pipeline", use_container_width=True, type="primary", key="btn_run_assessment"):
+    if st.button("🔍  Analyse Corn Quality", use_container_width=True, type="primary", key="btn_run_assessment"):
         with st.spinner("Analysing kernels — please wait..."):
             try:
                 predictor = CornPredictor(device=use_device, paper_mode=is_paper_mode)
@@ -1464,38 +1489,46 @@ if uploaded_file is not None:
             st.caption("No assessments run yet.")
 
 else:
-    # ── Disabled Run Button for Initial Clarity ──────────────────────────────
+    # ── Disabled Run Button ───────────────────────────────────────────────────
     st.button(
-        "🔍  Run Quality Assessment Pipeline",
+        "🔍  Analyse Corn Quality",
         use_container_width=True,
         disabled=True,
-        help="Please upload a corn cob image above to enable assessment",
+        help="Upload or scan a corn cob image above to start",
         key="btn_run_assessment_disabled"
     )
-    st.caption("👆 Upload an image above (.jpg, .jpeg, .png, etc.) to activate quality assessment.")
+    st.caption("👆 Upload a photo or use your camera above to begin.")
 
-    # ── Empty State ───────────────────────────────────────────────────────────
+    # ── Empty State — simple 3-step guide ────────────────────────────────────
     chat_context = None
     st.markdown("""
     <div class='empty-state'>
-        <div style='font-size:64px;margin-bottom:16px;'>🌽</div>
-        <h3 style='font-weight:700;margin:0 0 10px 0;font-size:22px;'>
-            Upload a Corn Image to Get Started
+        <div style='font-size:60px;margin-bottom:12px;'>🌽</div>
+        <h3 style='font-weight:700;margin:0 0 8px 0;font-size:20px;'>
+            How It Works — 3 Easy Steps
         </h3>
-        <p style='font-size:14px;max-width:520px;margin:0 auto;line-height:1.7;'>
-            Upload a photo of a corn cob in any standard image format (.jpg, .jpeg, .png, .webp, .bmp).
-            The system will automatically detect the ear, run semantic segmentation,
-            classify the grain variety, evaluate USDA/ISO grade, and forecast shelf life.
+        <p style='font-size:13px;max-width:480px;margin:0 auto 24px auto;line-height:1.7;'>
+            Take a photo of your corn, tap Analyse, and get an instant quality report.
         </p>
-        <div style='display:flex;gap:16px;justify-content:center;margin-top:24px;flex-wrap:wrap;'>
-            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>🔬 Semantic Segmentation</div>
-            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>📊 USDA / ISO Grading</div>
-            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>📦 Shelf-Life Forecast</div>
-            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:12px;padding:14px 20px;
-                        font-size:13px;color:var(--ag-text-secondary);box-shadow:0 2px 6px rgba(0,0,0,0.04);'>🌾 5 Variety Detection</div>
+        <div style='display:flex;gap:14px;justify-content:center;flex-wrap:wrap;'>
+            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:14px;
+                        padding:18px 22px;font-size:13px;color:var(--ag-text-secondary);
+                        box-shadow:0 2px 8px rgba(0,0,0,0.06);min-width:130px;text-align:center;'>
+                <div style='font-size:28px;margin-bottom:6px;'>📸</div>
+                <strong>Step 1</strong><br>Upload or scan a corn photo
+            </div>
+            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:14px;
+                        padding:18px 22px;font-size:13px;color:var(--ag-text-secondary);
+                        box-shadow:0 2px 8px rgba(0,0,0,0.06);min-width:130px;text-align:center;'>
+                <div style='font-size:28px;margin-bottom:6px;'>🔍</div>
+                <strong>Step 2</strong><br>Tap Analyse Corn Quality
+            </div>
+            <div style='background:var(--ag-bg-card);border:1px solid var(--ag-border);border-radius:14px;
+                        padding:18px 22px;font-size:13px;color:var(--ag-text-secondary);
+                        box-shadow:0 2px 8px rgba(0,0,0,0.06);min-width:130px;text-align:center;'>
+                <div style='font-size:28px;margin-bottom:6px;'>📊</div>
+                <strong>Step 3</strong><br>Get grade, health &amp; storage advice
+            </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
