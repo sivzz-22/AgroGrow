@@ -252,7 +252,7 @@ class UpgradedTrainer:
             epoch += 1
 
         logger.info(f"\nTraining complete. Best Val mIoU: {self.best_miou:.4f}")
-        logger.info(f"Best model saved → {self.BEST_PATH}")
+        logger.info(f"Best model saved -> {self.BEST_PATH}")
 
 
 # ── Entry Point ─────────────────────────────────────────────────────────────
