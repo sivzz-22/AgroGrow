@@ -1327,33 +1327,7 @@ if uploaded_file is not None:
                     <p class='health-desc'>The uploaded image does not appear to contain a valid corn cob or ear. Please upload a clear photo of corn.</p>
                 </div>
             </div>""", unsafe_allow_html=True)
-        elif q >= 75 and d < 5.0:
-            st.markdown(f"""
-            <div class='health-banner health-banner-healthy'>
-                <div class='health-icon'>✅</div>
-                <div>
-                    <h3 class='health-title'>Corn Batch is Healthy</h3>
-                    <p class='health-desc'>Overall quality score is <strong>{q:.1f}/100</strong> with minimal disease ({d:.1f}%). Safe for standard or extended storage.</p>
-                </div>
-            </div>""", unsafe_allow_html=True)
-        elif q >= 45 and d < 20.0:
-            st.markdown(f"""
-            <div class='health-banner health-banner-warning'>
-                <div class='health-icon'>⚠️</div>
-                <div>
-                    <h3 class='health-title'>Moderate Defects Detected</h3>
-                    <p class='health-desc'>Quality score is <strong>{q:.1f}/100</strong> with {d:.1f}% diseased/damaged kernels. Immediate aeration or drying recommended.</p>
-                </div>
-            </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div class='health-banner health-banner-danger'>
-                <div class='health-icon'>❌</div>
-                <div>
-                    <h3 class='health-title'>Severe Disease / Rotten Corn Detected</h3>
-                    <p class='health-desc'>Quality score is critical at <strong>{q:.1f}/100</strong> with {d:.1f}% diseased kernels. Not recommended for long-term storage or commercial sale.</p>
-                </div>
-            </div>""", unsafe_allow_html=True)
+
 
         grade_text  = g["grade"]
         raw_conf    = g["confidence"]

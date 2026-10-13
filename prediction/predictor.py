@@ -182,14 +182,16 @@ def clean_prediction_mask(img_rgb: np.ndarray,
     cob_roi = np.zeros((h, w), dtype=np.uint8)
 
     if num_labels > 1:
-        largest_lbl = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
-        main_cob_mask = (labels == largest_lbl).astype(np.uint8)
+        areas = stats[1:, cv2.CC_STAT_AREA]
+        max_area = np.max(areas)
+        valid_labels = [i + 1 for i, a in enumerate(areas) if a >= max(300, int(0.10 * max_area))]
+        main_cob_mask = np.isin(labels, valid_labels).astype(np.uint8)
         
-        # Close gaps within the cob body (connecting healthy kernels and internal diseased rot)
+        # Close gaps within the cob body
         k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
         cob_roi = cv2.morphologyEx(main_cob_mask, cv2.MORPH_CLOSE, k_close)
         
-        # Fill any internal holes (sunken missing sockets or interior rot)
+        # Fill any internal holes
         contours, _ = cv2.findContours(cob_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
             for cnt in contours:
@@ -231,23 +233,21 @@ def clean_prediction_mask(img_rgb: np.ndarray,
     blue_ratio  = blue_px / max(1, kernel_px)
     white_ratio = white_px / max(1, kernel_px)
 
-    # Manual user overrides take highest priority
+    # Automatic or manual variety identification
     is_flint_active = ("flint" in v_lower or "indian" in v_lower or "pigment" in v_lower or
-                       ("auto" in v_lower and cnn_variety is None and p_ratio >= 0.08))
-    is_blue_active  = ("blue" in v_lower or "black corn" in v_lower or
-                       ("auto" in v_lower and cnn_variety is None and blue_ratio >= 0.12))
+                       ("auto" in v_lower and (p_ratio >= 0.04 or anthocyanin_px >= 300)))
+    is_blue_active  = ("blue" in v_lower or "black" in v_lower or
+                       ("auto" in v_lower and (blue_ratio >= 0.08 or blue_px >= 300)))
     is_sweet_active = ("sweet" in v_lower or
-                       ("auto" in v_lower and cnn_variety is None and
-                        white_ratio >= 0.55 and p_ratio < 0.05 and blue_ratio < 0.05))
+                       ("auto" in v_lower and white_ratio >= 0.55 and p_ratio < 0.04 and blue_ratio < 0.04))
     is_pop_active   = ("popcorn" in v_lower or "pop corn" in v_lower)
 
     if cnn_variety is not None:
-        # CNN result wins for auto mode
         detected_variety = cnn_variety
-        is_flint_active  = "flint" in cnn_variety.lower() or "indian" in cnn_variety.lower()
-        is_blue_active   = "blue" in cnn_variety.lower() or "black" in cnn_variety.lower()
+        is_flint_active  = is_flint_active or ("flint" in cnn_variety.lower() or "indian" in cnn_variety.lower())
+        is_blue_active   = is_blue_active or ("blue" in cnn_variety.lower() or "black" in cnn_variety.lower())
     elif is_blue_active:
-        detected_variety = "Blue / Black Corn (Hopi Blue \u2014 Zea mays)"
+        detected_variety = "Blue / Black Corn (Hopi Blue — Zea mays)"
     elif is_flint_active:
         detected_variety = "Indian / Multi-Colored Flint Corn (Zea mays indurata)"
     elif is_sweet_active:
@@ -258,30 +258,32 @@ def clean_prediction_mask(img_rgb: np.ndarray,
         detected_variety = "Commercial Dent Corn (Zea mays indentata)"
 
     # 6. Final Pixel Classification within Cob ROI
+    is_pigmented = (m_ruby | m_purple | m_bronze | m_blue_black)
     clean_mask = np.zeros((h, w), dtype=np.uint8)
 
-    # Class 3: Diseased / Rotten Kernels (excluding foliage and husk leaves)
+    # Class 3: Diseased / Rotten Kernels (excluding foliage, husk leaves, mud, and naturally pigmented kernels)
     if probs is not None and probs.shape[0] >= 4:
-        m_dis = inside & (~rej_green) & (~rej_husk) & ((probs[3] >= 0.32) | ((raw_mask == 3) & (probs[3] >= probs[1])))
+        m_dis = inside & (~rej_green) & (~rej_husk) & (~rej_mud) & ((probs[3] >= 0.35) | ((raw_mask == 3) & (probs[3] >= probs[1])))
     else:
-        m_dis = inside & (~rej_green) & (~rej_husk) & (raw_mask == 3)
+        m_dis = inside & (~rej_green) & (~rej_husk) & (~rej_mud) & (raw_mask == 3)
+
+    # Naturally pigmented kernels in Flint/Blue varieties are genuine healthy grain, NOT rot!
+    if is_flint_active or is_blue_active:
+        m_dis = m_dis & (~is_pigmented)
+
+    # Class 2: Missing Kernel Sockets (excluding foliage, husk, mud, and pigmented kernels)
+    if is_flint_active or is_blue_active:
+        m_miss = inside & (~m_dis) & (~is_pigmented) & (~rej_green) & (~rej_mud) & (raw_mask == 2)
+    else:
+        if probs is not None and probs.shape[0] >= 4:
+            m_miss = inside & (~m_dis) & (~rej_green) & (~rej_mud) & ((probs[2] >= 0.30) | (raw_mask == 2))
+        else:
+            m_miss = inside & (~m_dis) & (~rej_green) & (~rej_mud) & (raw_mask == 2)
 
     # Class 1: Healthy Kernels
-    m_hlth = inside & (~m_dis) & ((raw_mask == 1) | m_yellow) & (~rej_green)
-    if is_flint_active:
-        # Genuine pigmented kernels in Flint varieties are classified as healthy grain, not disease
-        flint_healthy = inside & (~m_dis) & (m_ruby | m_purple | m_bronze)
-        m_hlth = m_hlth | flint_healthy
-    if is_blue_active:
-        # Blue/black corn anthocyanin pigmentation is healthy, not disease
-        blue_healthy = inside & (~m_dis) & m_blue_black
-        m_hlth = m_hlth | blue_healthy
-
-    # Class 2: Missing Kernel Sockets
-    if probs is not None and probs.shape[0] >= 4:
-        m_miss = inside & (~m_dis) & (~m_hlth) & ((probs[2] >= 0.25) | (raw_mask == 2))
-    else:
-        m_miss = inside & (~m_dis) & (~m_hlth) & (raw_mask == 2)
+    m_hlth = inside & (~m_dis) & (~m_miss) & (~rej_green) & (~rej_mud) & ((raw_mask == 1) | m_yellow)
+    if is_flint_active or is_blue_active:
+        m_hlth = m_hlth | (inside & (~m_dis) & (~m_miss) & (~rej_green) & (~rej_mud) & is_pigmented)
 
     clean_mask[m_hlth] = 1
     clean_mask[m_miss] = 2
@@ -439,34 +441,8 @@ class CornPredictor:
         W, H = global_config.input_size[1], global_config.input_size[0]
         img_display = cv2.resize(img_cropped, (W, H))
 
-        if self.paper_mode or pure_model:
-            # ── Pure Deep Learning — RAW CornNet argmax, ZERO heuristics ────────
-            # Both Zea Mays (paper_model.pth) and Multi Variety (best_model.pth)
-            # use this path. The neural network output is used AS-IS.
-            # MobileNet variety classifier runs AFTER the mask is finalized —
-            # purely to produce a human-readable variety display name.
-            # It has ZERO effect on the segmentation mask.
-            mask = raw_mask.copy()  # Final mask = pure CornNet output
-
-            if self.paper_mode:
-                variety_name = "Commercial Sweet Corn (Zea mays) — Research Paper"
-            else:
-                # Start with a default variety label
-                variety_name = "Commercial Dent Corn (Zea mays indentata)"
-                # Try MobileNet — display only, mask is already finalized above
-                try:
-                    clf = _get_variety_clf()
-                    if clf is not None and clf.is_trained:
-                        _k, _disp, _conf = clf.classify(img_display)
-                        if _disp and _k not in ("unknown", "uncertain") and _conf >= 0.55:
-                            variety_name = _disp
-                            logger.info(f"MobileNet variety (display only): {_disp} ({_conf:.1%})")
-                except Exception as _e:
-                    logger.debug(f"Variety classification info (non-critical): {_e}")
-        else:
-            # ── Legacy heuristic mode (not used in UI anymore) ───────────────
-            mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
-
+        # Restrict prediction to cob ROI, reject background foliage/mud, and protect naturally pigmented varieties
+        mask, variety_name = clean_prediction_mask(img_display, raw_mask, probs, corn_variety=corn_variety)
         self.last_detected_variety = variety_name
 
         # ── Build clean semi-transparent overlay (Natural Photo Blend) ───
