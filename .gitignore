@@ -16,6 +16,7 @@ __pycache__/
 weights/backup_*
 weights/checkpoint.pth
 weights/paper_checkpoint.pth
+weights/upgraded_checkpoint.pth
 weights/best_model_run1_epoch100.pth
 weights/variety_classifier_history.json
 *.h5
